@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Matter.js 約束示範</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #333;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script>
+        const Engine = Matter.Engine,
+            Render = Matter.Render,
+            Runner = Matter.Runner,
+            Bodies = Matter.Bodies,
+            Composite = Matter.Composite,
+            Constraint = Matter.Constraint,
+            MouseConstraint = Matter.MouseConstraint,
+            Mouse = Matter.Mouse;
+
+        // 創建引擎
+        const engine = Engine.create();
+        const world = engine.world;
+
+        // 創建渲染器
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false,
+                background: '#333'
+            }
+        });
+
+        // 創建邊界
+        const ground = Bodies.rectangle(window.innerWidth/2, window.innerHeight, window.innerWidth, 60, { isStatic: true });
+        const leftWall = Bodies.rectangle(0, window.innerHeight/2, 60, window.innerHeight, { isStatic: true });
+        const rightWall = Bodies.rectangle(window.innerWidth, window.innerHeight/2, 60, window.innerHeight, { isStatic: true });
+        const ceiling = Bodies.rectangle(window.innerWidth/2, 0, window.innerWidth, 60, { isStatic: true });
+
+        // 彈性約束 - 兩個方形
+        const box1 = Bodies.rectangle(300, 300, 50, 50);
+        const box2 = Bodies.rectangle(400, 300, 50, 50);
+        const springConstraint = Constraint.create({
+            bodyA: box1,
+            bodyB: box2,
+            stiffness: 0.01,
+            render: {
+                strokeStyle: '#fff',
+                lineWidth: 5
+            }
+        });
+
+        // 彈性約束 - 固定點和圓球
+        const fixedPoint = { x: 500, y: 200 };
+        const circle = Bodies.circle(600, 200, 30);
+        const springConstraint2 = Constraint.create({
+            pointA: fixedPoint,
+            bodyB: circle,
+            stiffness: 0.01,
+            render: {
+                strokeStyle: '#fff',
+                lineWidth: 5
+            }
+        });
+
+        // 剛性約束 - 兩個圓
+        const bigCircle = Bodies.circle(700, 300, 50);
+        const smallCircle = Bodies.circle(900, 300, 25);
+        const stiffConstraint = Constraint.create({
+            bodyA: bigCircle,
+            bodyB: smallCircle,
+            length: 200,
+            stiffness: 1,
+            render: {
+                strokeStyle: '#fff',
+                lineWidth: 5
+            }
+        });
+
+        // 剛性約束 - 固定點和球
+        const fixedPoint2 = { x: 800, y: 200 };
+        const circle2 = Bodies.circle(900, 200, 30);
+        const stiffConstraint2 = Constraint.create({
+            pointA: fixedPoint2,
+            bodyB: circle2,
+            stiffness: 1,
+            render: {
+                strokeStyle: '#fff',
+                lineWidth: 5
+            }
+        });
+
+        // 創建方塊塔
+        const stack = [];
+        for (let i = 0; i < 10; i++) {
+            for (let j = 0; j < 2; j++) {
+                stack.push(
+                    Bodies.rectangle(
+                        window.innerWidth - 100 + j * 50,
+                        window.innerHeight - 30 - i * 50,
+                        40,
+                        40
+                    )
+                );
+            }
+        }
+
+        // 添加滑鼠控制
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: {
+                    visible: false
+                }
+            }
+        });
+
+        // 將所有物件添加到世界
+        Composite.add(world, [
+            ground, leftWall, rightWall, ceiling,
+            box1, box2, springConstraint,
+            circle, springConstraint2,
+            bigCircle, smallCircle, stiffConstraint,
+            circle2, stiffConstraint2,
+            mouseConstraint,
+            ...stack
+        ]);
+
+        // 運行引擎和渲染器
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // 防止右鍵選單
+        render.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    </script>
+</body>
+</html>

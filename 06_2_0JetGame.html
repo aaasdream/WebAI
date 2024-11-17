@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太空射擊遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+        #gameCanvas {
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+        }
+        .player {
+            position: absolute;
+            width: 80px;
+            height: 160px;
+            user-select: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-image: url('./image/Airplane.png');
+            background-size: contain;    /* 或者使用 'cover' 來填滿整個區域 */
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        .hitbox {
+            position: absolute;
+            border: 1px solid red;  /* 註解：設置border: none;可以隱藏碰撞框 */
+            width: 30px;  /* 註解：這裡可以調整碰撞框寬度 */
+            height: 40px; /* 註解：這裡可以調整撞框高度 */
+        }
+        .bullet {
+            position: absolute;
+            font-size: 20px;
+            user-select: none;
+        }
+        .enemy {
+            position: absolute;
+            width: 60px;  /* 設置適當的寬度 */
+            height: 60px; /* 設置適當的高度 */
+            user-select: none;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        .cloud {
+            position: absolute;
+            user-select: none;
+            opacity: 0.5;
+        }
+        .powerup {
+            position: absolute;
+            font-size: 30px;
+            user-select: none;
+        }
+        .explosion {
+            position: absolute;
+            font-size: 40px;
+            user-select: none;
+        }
+        #healthBar {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+        }
+        #gameBackground {
+            position: absolute;
+            width: 100vw;
+            top: 0;
+            left: 0;
+            z-index: -1;  /* 確保背景在其他元素後面 */
+        }
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(-10px, 10px); }
+            50% { transform: translate(10px, -10px); }
+            75% { transform: translate(-8px, -8px); }
+        }
+
+        .shake {
+            animation: shake 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameCanvas">
+        <img id="gameBackground" src="./image/BackGround.png">
+        <div id="healthBar">HP: 100</div>
+    </div>
+
+    <script>
+        // 遊戲參數設定
+        const GAME_CONFIG = {
+            // 背景相關
+            BACKGROUND_SCROLL_SPEED: 1.2,    // 背景捲動速度 (越大捲動越快)
+            
+            // 玩家相關
+            PLAYER_INITIAL_HEALTH: 100,      // 玩家初始生命值
+            PLAYER_INITIAL_POWER: 1,         // 玩家初始火力等級
+            PLAYER_MAX_POWER: 5,             // 玩家最大火力等級
+            PLAYER_SHOOT_INTERVAL: 100,      // 玩家射擊間隔 (毫秒)
+            PLAYER_WIDTH: 80,
+            PLAYER_HEIGHT: 80,
+            PLAYER_TOUCH_OFFSET: 100,  // 觸控時的上方偏移量
+            
+            // 敵人相關
+            ENEMY_SPAWN_INTERVAL: 1000,      // 敵人生成間隔 (毫秒)
+            ENEMY_SHOOT_INTERVAL: 1000,      // 敵人射擊間隔 (毫秒)
+            ENEMY_BULLET_SPEED: 5,           // 敵人子彈速度
+            ENEMY_DAMAGE: 20,                // 敵人撞擊傷害
+            
+            // 子彈相關
+            PLAYER_BULLET_SPEED: 10,         // 玩家子��度
+            ENEMY_BULLET_DAMAGE: 10,         // 敵人子彈傷害
+            
+            // 道具相關
+            POWERUP_SPAWN_INTERVAL: 10000,   // 道具生成間隔 (毫秒)
+            
+            // 雲朵相關
+            CLOUD_SPAWN_INTERVAL: 2000,      // 雲朵生成間隔 (毫秒)
+            CLOUD_MIN_SIZE: 50,              // 雲朵最小尺寸
+            CLOUD_MAX_SIZE: 250,             // 雲朵最大尺寸
+            
+            // 遊戲更新相關
+            GAME_UPDATE_INTERVAL: 16,         // 遊戲更新間隔 (毫秒，約60FPS)
+            ENEMY_WIDTH: 60,                 // 敵機寬度
+            ENEMY_HEIGHT: 60,                // 敵機高度
+            ENEMY_SPAWN_MARGIN: 50,          // 生成邊距
+            ENEMY_MOVEMENT_BOUNDARY: 20,     // 移動邊界緩衝
+            
+            // 音樂相關
+            BGM_VOLUME: 0.3,          // 背景音樂音量
+            BGM_PATH: './music/gamemusic.mp3',  // 背景音樂路徑
+            SOUND_ENABLED: true,
+            SOUND_VOLUME: 0.3,
+        };
+
+        // 音效系統
+        const AudioManager = {
+            context: null,
+            sounds: {},
+            initialized: false,
+
+            async init() {
+                try {
+                    // 創建音頻上下文
+                    this.context = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    // 確保音頻上下文已經啟動
+                    if (this.context.state === 'suspended') {
+                        await this.context.resume();
+                    }
+                    
+                    console.log('音頻上下文狀態:', this.context.state);
+                    
+                    // 玩家射擊音效
+                    this.createSound('shoot', {
+                        frequencies: [150, 100],
+                        type: 'square',
+                        duration: 0.1,
+                        volume: 0.035
+                    });
+
+                    // 添加敵機射擊音效
+                    this.createSound('enemyShoot', {
+                        frequencies: [300, 200],    // 比玩家射擊略高的頻率
+                        type: 'sawtooth',           // 使用鋸齒波，聽起來更尖銳
+                        duration: 0.15,             // 稍長的持續時間
+                        volume: 0.02                 // 適中的音量
+                    });
+                    
+                    this.createSound('explosion', {
+                        frequencies: [60, 60],
+                        type: 'sawtooth',
+                        duration: 0.4,
+                        volume: 0.2
+                    });
+                    
+                    this.createSound('hit', {
+                        frequencies: [200, 100],    // 低頻的撞擊聲
+                        type: 'square',             // 方波產生更明顯的打擊感
+                        duration: 0.15,             // 較短的持續時間
+                        volume: 0.25                // 適中的音量
+                    });
+                    
+                    this.createSound('powerup', {
+                        frequencies: [1200, 1800],  // 較高的頻率
+                        type: 'sine',               // 使用正弦波，更柔和
+                        duration: 0.2,              // 適中的持續時間
+                        volume: 0.3                 // 適中的音量
+                    });
+
+                    this.initialized = true;
+                    console.log('音效系統初始化完成');
+                } catch (error) {
+                    console.error('音效系統初始化失敗:', error);
+                }
+            },
+
+            createSound(name, config) {
+                this.sounds[name] = config;
+                console.log(`創建音效: ${name}`, config);
+            },
+
+            playSound(name) {
+                if (!this.initialized || !this.sounds[name]) {
+                    console.log(`無法播放音效 ${name}: 系統未初始化或音效不存在`);
+                    return;
+                }
+
+                try {
+                    const sound = this.sounds[name];
+                    const oscillator = this.context.createOscillator();
+                    const gainNode = this.context.createGain();
+
+                    oscillator.connect(gainNode);
+                    gainNode.connect(this.context.destination);
+
+                    oscillator.type = sound.type;
+                    
+                    const now = this.context.currentTime;
+                    
+                    // 設置頻率變化
+                    oscillator.frequency.setValueAtTime(sound.frequencies[0], now);
+                    oscillator.frequency.exponentialRampToValueAtTime(
+                        sound.frequencies[1],
+                        now + sound.duration
+                    );
+
+                    // 設置音量包絡
+                    gainNode.gain.setValueAtTime(sound.volume, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + sound.duration);
+
+                    oscillator.start(now);
+                    oscillator.stop(now + sound.duration);
+                    
+                    console.log(`播放音效: ${name}`);
+                } catch (error) {
+                    console.error(`播放音效 ${name} 失敗:`, error);
+                }
+            }
+        };
+
+        // 修改 game 對象使用配置參數
+        const game = {
+            player: {
+                element: null,
+                x: 0,
+                y: 0,
+                health: GAME_CONFIG.PLAYER_INITIAL_HEALTH,
+                powerLevel: GAME_CONFIG.PLAYER_INITIAL_POWER
+            },
+            bullets: [],
+            enemies: [],
+            clouds: [],
+            powerups: [],
+            explosions: [],
+            enemyBullets: [],
+            background: {
+                element: null,
+                y: 0,
+                height: 0,
+                scrollSpeed: GAME_CONFIG.BACKGROUND_SCROLL_SPEED
+            },
+            gameOver: false,
+            bgm: null,  // 背景音樂
+            state: 'START',  // 'START', 'PLAYING', 'GAMEOVER'
+            boss: null,
+            bossHealth: 50,
+            isBossFight: false
+        };
+
+        function init() {
+            // 只初始化音頻
+            initAudio();
+            // 顯示開始畫面
+            createStartScreen();
+        }
+
+        function initBackground() {
+            const bg = document.getElementById('gameBackground');
+            game.background.element = bg;
+            
+            // 等待圖片加載完成
+            bg.onload = () => {
+                // 計算縮放後的高度，保持圖片比例
+                const scale = window.innerWidth / bg.naturalWidth;
+                game.background.height = bg.naturalHeight * scale;
+                bg.style.height = game.background.height + 'px';
+                
+                // 計算滾動速度
+                const targetTime = 60000; // 1分鐘
+                const totalDistance = game.background.height - window.innerHeight;
+                const speedPerFrame = totalDistance / (targetTime / GAME_CONFIG.GAME_UPDATE_INTERVAL);
+                
+                // 更新配置中的滾動速度
+                GAME_CONFIG.BACKGROUND_SCROLL_SPEED = speedPerFrame;
+                game.background.scrollSpeed = speedPerFrame;
+                
+                // 初始位置設置在底部
+                game.background.y = window.innerHeight - game.background.height;
+                bg.style.top = game.background.y + 'px';
+            };
+
+            // 如果圖片已經被快取，手動觸發 onload
+            if (bg.complete) {
+                bg.onload();
+            }
+        }
+
+        function createPlayer() {
+            const player = document.createElement('div');
+            player.className = 'player';
+            player.innerHTML = '🚀<div class="hitbox"></div>';
+            document.getElementById('gameCanvas').appendChild(player);
+            game.player.element = player;
+            game.player.x = window.innerWidth / 2;
+            game.player.y = window.innerHeight - 100;
+        }
+
+        function movePlayer(e) {
+            if (game.state !== 'PLAYING') return;
+            
+            const playerWidth = GAME_CONFIG.PLAYER_WIDTH || 80;
+            const playerHeight = GAME_CONFIG.PLAYER_HEIGHT || 80;
+            
+            // 計算新位置（飛機中心點對齊滑鼠/手指）
+            const newX = e.clientX - (playerWidth / 2);
+            const newY = e.clientY - (playerHeight / 2);
+            
+            // 限制飛機在螢幕範圍內
+            game.player.x = Math.max(0, Math.min(window.innerWidth - playerWidth, newX));
+            game.player.y = Math.max(0, Math.min(window.innerHeight - playerHeight, newY));
+            
+            // 更新飛機位置
+            game.player.element.style.left = game.player.x + 'px';
+            game.player.element.style.top = game.player.y + 'px';
+        }
+
+        function shoot() {
+            if (game.gameOver) return;
+            
+            // 播放射擊音效
+            AudioManager.playSound('shoot');
+            
+            // 根據能量等級決定子彈角度
+            let angles;
+            switch (game.player.powerLevel) {
+                case 1:
+                    angles = [0];  // 一發子彈
+                    break;
+                case 2:
+                    angles = [-15, 15];  // 兩發子彈，左右各15度
+                    break;
+                case 3:
+                    angles = [-25, 0, 25];  // 三發子彈，左中右
+                    break;
+                case 4:
+                    angles = [-30, -10, 10, 30];  // 四發子彈
+                    break;
+                case 5:
+                    angles = [-35, -17.5, 0, 17.5, 35];  // 五發子彈
+                    break;
+                default:
+                    angles = [0];
+            }
+            
+            // 發射子彈
+            angles.forEach(angle => {
+                const bullet = document.createElement('div');
+                bullet.className = 'bullet';
+                bullet.innerHTML = '🔥';
+                
+                // 從飛機中心發射
+                const bulletX = game.player.x + 40;  // 40 是飛機寬度的一半
+                const bulletY = game.player.y;
+                
+                bullet.style.left = bulletX + 'px';
+                bullet.style.top = bulletY + 'px';
+                document.getElementById('gameCanvas').appendChild(bullet);
+                
+                // 計算子彈的水平和垂直速度分量
+                const radian = angle * (Math.PI / 180);  // 將角度轉換為弧度
+                const speed = GAME_CONFIG.PLAYER_BULLET_SPEED;
+                const speedX = Math.sin(radian) * speed;  // 水平速度分量
+                const speedY = -Math.cos(radian) * speed; // 垂直速度分量
+                
+                game.bullets.push({
+                    element: bullet,
+                    x: bulletX,
+                    y: bulletY,
+                    speedX: speedX,
+                    speedY: speedY
+                });
+            });
+        }
+
+        function createEnemy() {
+            if (game.gameOver) return;
+            const enemy = document.createElement('div');
+            enemy.className = 'enemy';
+            
+            // 獲取敵機的尺寸
+            const ENEMY_WIDTH = 60;  // 根據你的 CSS 中設置的寬度
+            
+            // 計算安全的生成範圍
+            const minX = 0;
+            const maxX = window.innerWidth - ENEMY_WIDTH;
+            
+            // 確保敵機在可見範圍內生成
+            const x = minX + Math.random() * (maxX - minX);
+            const y = -ENEMY_WIDTH;  // 從螢幕上方稍微偏上的位置開始
+            
+            enemy.style.left = x + 'px';
+            enemy.style.top = y + 'px';
+            
+            // 隨機選擇敵機圖片
+            const enemyImages = [
+                './image/a1.png',
+                './image/a2.png',
+                './image/a3.png'
+            ];
+            const randomImage = enemyImages[Math.floor(Math.random() * enemyImages.length)];
+            enemy.style.backgroundImage = `url('${randomImage}')`;
+            
+            document.getElementById('gameCanvas').appendChild(enemy);
+
+            const movePatterns = [
+                { type: 'straight', speed: 2 },
+                { type: 'wave', speed: 3, amplitude: 100, frequency: 0.02 },
+                { type: 'spiral', speed: 2, radius: 100, angle: 0 },
+                { type: 'target', speed: 3, targetY: Math.random() * 200 }
+            ];
+
+            // 根據螢幕寬度調整波浪和螺旋移動的幅度
+            const screenWidthFactor = window.innerWidth / 1920; // 假設 1920 是基準寬度
+            movePatterns[1].amplitude *= screenWidthFactor; // 調整波浪幅度
+            movePatterns[2].radius *= screenWidthFactor;    // 調整螺旋半徑
+
+            const shootPatterns = [
+                { type: 'down' },
+                { type: 'aimed' },
+                { type: 'spread4' },
+                { type: 'spread8' }
+            ];
+
+            game.enemies.push({
+                element: enemy,
+                x: x,
+                y: y,
+                width: ENEMY_WIDTH,
+                height: ENEMY_WIDTH,
+                pattern: movePatterns[Math.floor(Math.random() * movePatterns.length)],
+                shootPattern: shootPatterns[Math.floor(Math.random() * shootPatterns.length)],
+                lastShot: 0
+            });
+        }
+
+        function createCloud() {
+            const cloud = document.createElement('div');
+            cloud.className = 'cloud';
+            cloud.innerHTML = '☁️';
+            const size = GAME_CONFIG.CLOUD_MIN_SIZE + 
+                         Math.random() * (GAME_CONFIG.CLOUD_MAX_SIZE - GAME_CONFIG.CLOUD_MIN_SIZE);
+            cloud.style.fontSize = size + 'px';
+            const x = Math.random() * (window.innerWidth - size);
+            cloud.style.left = x + 'px';
+            cloud.style.top = '-' + size + 'px';
+            document.getElementById('gameCanvas').appendChild(cloud);
+            game.clouds.push({
+                element: cloud,
+                x: x,
+                y: -size,
+                speed: 1 + Math.random() * 2,
+                size: size
+            });
+        }
+
+        function createPowerup() {
+            if (game.gameOver) return;
+            const powerup = document.createElement('div');
+            powerup.className = 'powerup';
+            powerup.innerHTML = '⭐';
+            const x = Math.random() * (window.innerWidth - 30);
+            powerup.style.left = x + 'px';
+            powerup.style.top = '-30px';
+            document.getElementById('gameCanvas').appendChild(powerup);
+            game.powerups.push({
+                element: powerup,
+                x: x,
+                y: -30,
+                width: 30,
+                height: 30
+            });
+        }
+
+        function enemyShoot(enemy) {
+            // 播放敵機射擊音效
+            AudioManager.playSound('enemyShoot');
+
+            const bullet = document.createElement('div');
+            bullet.className = 'bullet';
+            bullet.innerHTML = '💠';
+
+            const bulletData = {
+                element: bullet,
+                x: enemy.x + 15,
+                y: enemy.y + 30,
+                speedX: 0,
+                speedY: GAME_CONFIG.ENEMY_BULLET_SPEED
+            };
+
+            switch (enemy.shootPattern.type) {
+                case 'down':
+                    // 直線向下射擊
+                    break;
+                case 'aimed':
+                    // 瞄準玩家射擊
+                    const dx = game.player.x - enemy.x;
+                    const dy = game.player.y - enemy.y;
+                    const angle = Math.atan2(dy, dx);
+                    bulletData.speedX = Math.cos(angle) * GAME_CONFIG.ENEMY_BULLET_SPEED;
+                    bulletData.speedY = Math.sin(angle) * GAME_CONFIG.ENEMY_BULLET_SPEED;
+                    break;
+                case 'spread4':
+                    // 四向散射
+                    for (let i = 0; i < 4; i++) {
+                        const angle = (i * Math.PI / 2);
+                        createEnemyBullet(enemy, angle);
+                    }
+                    return;
+                case 'spread8':
+                    // 八向散射
+                    for (let i = 0; i < 8; i++) {
+                        const angle = (i * Math.PI / 4);
+                        createEnemyBullet(enemy, angle);
+                    }
+                    return;
+            }
+
+            bullet.style.left = bulletData.x + 'px';
+            bullet.style.top = bulletData.y + 'px';
+            document.getElementById('gameCanvas').appendChild(bullet);
+            game.enemyBullets.push(bulletData);
+        }
+
+        function createEnemyBullet(enemy, angle) {
+            // 不需要在這裡播放音效，因為已經在 enemyShoot 中播放了
+            const bullet = document.createElement('div');
+            bullet.className = 'bullet';
+            bullet.innerHTML = '💠';
+            bullet.style.left = (enemy.x + 15) + 'px';
+            bullet.style.top = (enemy.y + 30) + 'px';
+            document.getElementById('gameCanvas').appendChild(bullet);
+            
+            game.enemyBullets.push({
+                element: bullet,
+                x: enemy.x + 15,
+                y: enemy.y + 30,
+                speedX: Math.cos(angle) * GAME_CONFIG.ENEMY_BULLET_SPEED,
+                speedY: Math.sin(angle) * GAME_CONFIG.ENEMY_BULLET_SPEED
+            });
+        }
+
+        function shakeScreen() {
+            const gameCanvas = document.getElementById('gameCanvas');
+            gameCanvas.style.animation = 'none';
+            void gameCanvas.offsetHeight; // 觸發重排
+            gameCanvas.style.animation = 'shake 0.2s ease-in-out';
+        }
+
+        function updateGame() {
+            if (game.state !== 'PLAYING') return;
+
+            // 更新背景位置
+            if (!game.isBossFight) {  // 只在非 Boss 戰時滾動背景
+                game.background.y += game.background.scrollSpeed;
+                game.background.element.style.top = game.background.y + 'px';
+
+                // 檢查是否需要觸發 Boss 戰
+                if (game.background.y >= 0) {  // 當背景滾動到頂部時
+                    createBoss();
+                    return;
+                }
+            }
+
+            // 更新玩家位置
+            game.player.element.style.left = game.player.x + 'px';
+            game.player.element.style.top = game.player.y + 'px';
+
+            // 移除原本的 Game Over 檢查
+            // if (game.player.y < 0) {
+            //     gameOver();
+            //     return;
+            // }
+
+            // 更新子彈位置
+            for (let i = game.bullets.length - 1; i >= 0; i--) {
+                const bullet = game.bullets[i];
+                
+                // 使用速度分量更新位置
+                bullet.x += bullet.speedX;
+                bullet.y += bullet.speedY;
+                
+                // 更新子彈元素位置
+                bullet.element.style.left = bullet.x + 'px';
+                bullet.element.style.top = bullet.y + 'px';
+                
+                // 移除超出螢幕的子彈
+                if (bullet.y < 0 || bullet.x < 0 || bullet.x > window.innerWidth) {
+                    bullet.element.remove();
+                    game.bullets.splice(i, 1);
+                }
+            }
+
+            // 更新敵人位置和射擊
+            game.enemies.forEach((enemy, index) => {
+                let newX = enemy.x;
+                let newY = enemy.y;
+
+                switch (enemy.pattern.type) {
+                    case 'straight':
+                        newY += enemy.pattern.speed;
+                        break;
+                    case 'wave':
+                        newY += enemy.pattern.speed;
+                        newX = enemy.x + Math.sin(newY * enemy.pattern.frequency) * enemy.pattern.amplitude * 0.1;
+                        break;
+                    case 'spiral':
+                        newY += enemy.pattern.speed;
+                        enemy.pattern.angle += 0.05;
+                        newX += Math.cos(enemy.pattern.angle) * 2;
+                        break;
+                    case 'target':
+                        if (newY < enemy.pattern.targetY) {
+                            newY += enemy.pattern.speed;
+                        }
+                        break;
+                }
+
+                // 限制敵機在螢幕範圍內
+                newX = Math.max(0, Math.min(window.innerWidth - enemy.width, newX));
+                
+                enemy.x = newX;
+                enemy.y = newY;
+                enemy.element.style.left = newX + 'px';
+                enemy.element.style.top = newY + 'px';
+
+                // 檢查是否超出螢幕
+                if (enemy.y > window.innerHeight + 50) {  // 只檢查下邊界，允許從上方進入
+                    enemy.element.remove();
+                    game.enemies.splice(index, 1);
+                    return;
+                }
+
+                // 添加敵人射擊邏輯
+                const currentTime = Date.now();
+                if (currentTime - enemy.lastShot > GAME_CONFIG.ENEMY_SHOOT_INTERVAL) {
+                    enemyShoot(enemy);
+                    enemy.lastShot = currentTime;
+                }
+            });
+
+            // 更新敵人子彈位置
+            game.enemyBullets.forEach((bullet, bulletIndex) => {
+                bullet.x += bullet.speedX;
+                bullet.y += bullet.speedY;
+                bullet.element.style.left = bullet.x + 'px';
+                bullet.element.style.top = bullet.y + 'px';
+
+                // 檢查是否超出螢幕
+                if (bullet.y > window.innerHeight || 
+                    bullet.y < 0 || 
+                    bullet.x > window.innerWidth || 
+                    bullet.x < 0) {
+                    bullet.element.remove();
+                    game.enemyBullets.splice(bulletIndex, 1);
+                    return;
+                }
+
+                // 檢查敵人子彈是否擊中玩家
+                if (checkCollision(bullet, game.player)) {
+                    // 播放受傷音效
+                    AudioManager.playSound('hit', 100);  // 降低冷卻時間以確保音效播放
+                    
+                    // 震動效果
+                    shakeScreen();
+                    
+                    // 減少生命值
+                    game.player.health = Math.max(0, game.player.health - 10);  // 確保生命值不會小於 0
+                    
+                    // 更新血量顯示
+                    updateHealthBar();
+                    
+                    // 移除子彈
+                    bullet.element.remove();
+                    game.enemyBullets.splice(bulletIndex, 1);
+                    
+                    // 創建受傷效果
+                    createHitEffect(game.player.x, game.player.y);
+                    
+                    // 檢查遊戲結束
+                    if (game.player.health <= 0) {
+                        gameOver();
+                    }
+                }
+            });
+
+            // 更雲朵位置
+            game.clouds.forEach((cloud, index) => {
+                cloud.y += cloud.speed;
+                cloud.element.style.top = cloud.y + 'px';
+
+                if (cloud.y > window.innerHeight) {
+                    cloud.element.remove();
+                    game.clouds.splice(index, 1);
+                }
+            });
+
+            // 更新補給品位置和碰撞檢測
+            for (let i = game.powerups.length - 1; i >= 0; i--) {
+                const powerup = game.powerups[i];
+                powerup.y += 2;
+                powerup.element.style.top = powerup.y + 'px';
+
+                if (powerup.y > window.innerHeight) {
+                    powerup.element.remove();
+                    game.powerups.splice(i, 1);
+                    continue;
+                }
+
+                // 更新 powerup 的實際位置
+                powerup.x = parseFloat(powerup.element.style.left);
+                
+                if (checkCollision(powerup, game.player)) {
+                    handlePowerupCollision(powerup, i);
+                }
+            }
+
+            // 檢查子彈擊中敵人
+            game.bullets.forEach((bullet, bulletIndex) => {
+                game.enemies.forEach((enemy, enemyIndex) => {
+                    if (checkCollision(bullet, enemy)) {
+                        createExplosion(enemy.x, enemy.y);
+                        enemy.element.remove();
+                        game.enemies.splice(enemyIndex, 1);
+                        bullet.element.remove();
+                        game.bullets.splice(bulletIndex, 1);
+                    }
+                });
+            });
+
+            // 檢查子彈是否擊中 Boss
+            if (game.boss) {
+                game.bullets.forEach((bullet, bulletIndex) => {
+                    if (checkCollision(bullet, game.boss)) {
+                        // 播放擊中音效
+                        AudioManager.playSound('hit');
+                        
+                        // 移除子彈
+                        bullet.element.remove();
+                        game.bullets.splice(bulletIndex, 1);
+                        
+                        // 減少 Boss 血量
+                        game.boss.health--;
+                        game.bossHealth--;
+                        
+                        // 創建打擊特效
+                        createHitEffect(
+                            bullet.x + Math.random() * 400, 
+                            bullet.y + Math.random() * 400
+                        );
+
+                        // Boss 被擊敗
+                        if (game.bossHealth <= 0) {
+                            handleBossDefeat();
+                        }
+                    }
+                });
+            }
+        }
+
+        function checkCollision(obj1, obj2) {
+            // 獲取兩個物體的位置和大小
+            let rect1, rect2;
+            
+            if (obj2 === game.player) {
+                // 獲取玩家的位置和大小
+                const playerRect = obj2.element.getBoundingClientRect();
+                rect2 = {
+                    x: playerRect.left,
+                    y: playerRect.top,
+                    width: playerRect.width,
+                    height: playerRect.height
+                };
+            } else {
+                rect2 = {
+                    x: obj2.x,
+                    y: obj2.y,
+                    width: obj2.width || 30,
+                    height: obj2.height || 30
+                };
+            }
+
+            rect1 = {
+                x: parseFloat(obj1.element.style.left),
+                y: parseFloat(obj1.element.style.top),
+                width: obj1.width || 30,
+                height: obj1.height || 30
+            };
+
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        function createExplosion(x, y) {
+            // 播放爆炸音效
+            AudioManager.playSound('explosion');
+            
+            const explosion = document.createElement('div');
+            explosion.className = 'explosion';
+            explosion.innerHTML = '💥';
+            explosion.style.left = x + 'px';
+            explosion.style.top = y + 'px';
+            document.getElementById('gameCanvas').appendChild(explosion);
+            setTimeout(() => explosion.remove(), 500);
+        }
+
+        function gameOver() {
+            game.state = 'GAMEOVER';
+            game.gameOver = true;
+            document.getElementById('healthBar').textContent = 'GAME OVER';
+            if (game.bgm) {
+                game.bgm.pause();
+                game.bgm.currentTime = 0;
+            }
+
+            // 可以添加重新開始按鈕
+            const restartButton = document.createElement('button');
+            restartButton.textContent = '重新開始';
+            restartButton.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                padding: 15px 40px;
+                font-size: 24px;
+                background: #ff0000;
+                border: none;
+                border-radius: 25px;
+                color: white;
+                cursor: pointer;
+                z-index: 1000;
+            `;
+            
+            restartButton.addEventListener('click', () => {
+                location.reload();  // 重新加載頁面
+            });
+
+            document.body.appendChild(restartButton);
+        }
+
+        // 添加音樂初始化和控制函數
+        function initAudio() {
+            try {
+                // 創建音頻元素
+                game.bgm = new Audio(GAME_CONFIG.BGM_PATH);
+                game.bgm.loop = true;
+                game.bgm.volume = GAME_CONFIG.BGM_VOLUME;
+                
+                // 檢測是否是移動設備
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                
+                if (isMobile) {
+                    // 移動設備：需要用戶交互才播放
+                    document.addEventListener('touchstart', () => {
+                        if (game.bgm.paused) {
+                            game.bgm.play().catch(error => {
+                                console.log('移動端音樂播放失敗:', error);
+                            });
+                        }
+                    }, { once: true });
+                } else {
+                    // 電腦端：自動播放
+                    window.addEventListener('load', () => {
+                        setTimeout(() => {
+                            game.bgm.play().catch(error => {
+                                console.log('電腦端音樂播放失敗:', error);
+                                // 如果自動播放失敗，改為等待任意鍵觸發
+                                document.addEventListener('keydown', () => {
+                                    if (game.bgm.paused) {
+                                        game.bgm.play();
+                                    }
+                                }, { once: true });
+                            });
+                        }, 1000); // 延遲1秒後播放，確保頁面完全加載
+                    });
+                }
+
+            } catch (error) {
+                console.error('音頻初始化錯誤:', error);
+            }
+        }
+
+        function stopBGM() {
+            if (game.bgm) {
+                game.bgm.pause();
+                game.bgm.currentTime = 0;
+            }
+        }
+
+        // 可以添加音量控制按鈕（可選）
+        function createVolumeControl() {
+            const volumeBtn = document.createElement('button');
+            volumeBtn.innerHTML = '🔊';
+            volumeBtn.style.position = 'fixed';
+            volumeBtn.style.top = '10px';
+            volumeBtn.style.right = '10px';
+            volumeBtn.style.zIndex = '1000';
+            volumeBtn.style.padding = '10px';
+            volumeBtn.style.background = 'rgba(255, 255, 255, 0.5)';
+            volumeBtn.style.border = 'none';
+            volumeBtn.style.borderRadius = '5px';
+            volumeBtn.style.cursor = 'pointer';
+            
+            let isMuted = false;
+            volumeBtn.addEventListener('click', () => {
+                if (isMuted) {
+                    game.bgm.volume = GAME_CONFIG.BGM_VOLUME;
+                    volumeBtn.innerHTML = '���';
+                } else {
+                    game.bgm.volume = 0;
+                    volumeBtn.innerHTML = '🔈';
+                }
+                isMuted = !isMuted;
+            });
+            
+            document.body.appendChild(volumeBtn);
+        }
+
+        // 添加開始畫面
+        function createStartScreen() {
+            const startScreen = document.createElement('div');
+            startScreen.id = 'startScreen';
+            startScreen.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                z-index: 1000;
+            `;
+
+            const title = document.createElement('h1');
+            title.textContent = '太空戰機';
+            title.style.cssText = `
+                color: white;
+                font-size: 48px;
+                margin-bottom: 30px;
+                text-shadow: 0 0 10px #00ff00;
+            `;
+
+            const startButton = document.createElement('button');
+            startButton.textContent = '開始遊戲';
+            startButton.style.cssText = `
+                padding: 15px 40px;
+                font-size: 24px;
+                background: #00ff00;
+                border: none;
+                border-radius: 25px;
+                color: white;
+                cursor: pointer;
+                transition: transform 0.2s;
+                box-shadow: 0 0 15px #00ff00;
+            `;
+
+            startButton.addEventListener('mouseover', () => {
+                startButton.style.transform = 'scale(1.1)';
+            });
+
+            startButton.addEventListener('mouseout', () => {
+                startButton.style.transform = 'scale(1)';
+            });
+
+            startButton.addEventListener('click', startGame);
+
+            startScreen.appendChild(title);
+            startScreen.appendChild(startButton);
+            document.body.appendChild(startScreen);
+        }
+
+        // 開始遊戲函數
+        function startGame() {
+            // 移除開始畫面
+            const startScreen = document.getElementById('startScreen');
+            if (startScreen) {
+                startScreen.remove();
+            }
+
+            // 初始化音效系統
+            AudioManager.init().then(() => {
+                console.log('音效系統就緒');
+                // 播放測試音效
+                AudioManager.playSound('powerup');
+            });
+
+            // 更改遊戲狀態
+            game.state = 'PLAYING';
+            
+            // 初始化遊戲
+            initBackground();
+            createPlayer();
+            
+            // 添加滑鼠和觸摸事件監聽
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            
+            if (isMobile) {
+                // 移動設備的觸摸控制
+                document.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    movePlayer({
+                        clientX: e.touches[0].clientX,
+                        clientY: e.touches[0].clientY
+                    });
+                }, { passive: false });
+
+                document.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    movePlayer({
+                        clientX: e.touches[0].clientX,
+                        clientY: e.touches[0].clientY
+                    });
+                }, { passive: false });
+            } else {
+                // 電腦端的滑鼠控制
+                document.addEventListener('mousemove', (e) => {
+                    movePlayer(e);
+                });
+            }
+            
+            // 設置遊戲循環
+            setInterval(createCloud, GAME_CONFIG.CLOUD_SPAWN_INTERVAL);
+            setInterval(createEnemy, GAME_CONFIG.ENEMY_SPAWN_INTERVAL);
+            setInterval(createPowerup, GAME_CONFIG.POWERUP_SPAWN_INTERVAL);
+            setInterval(updateGame, GAME_CONFIG.GAME_UPDATE_INTERVAL);
+            setInterval(shoot, GAME_CONFIG.PLAYER_SHOOT_INTERVAL);
+        }
+
+        // 可以添加一個專門的函數來處理補給碰撞
+        function handlePowerupCollision(powerup, index) {
+            // 播放補給音效
+            AudioManager.playSound('powerup');
+            
+            // 增加能量等級
+            if (game.player.powerLevel < GAME_CONFIG.PLAYER_MAX_POWER) {
+                game.player.powerLevel++;
+                console.log('Power level increased to:', game.player.powerLevel);
+            }
+            
+            // 移除補給
+            powerup.element.remove();
+            game.powerups.splice(index, 1);
+            
+            // 創建視覺效果
+            createPowerupEffect(powerup.x, powerup.y);
+        }
+
+        // 添加補給效果（可選）
+        function createPowerupEffect(x, y) {
+            const effect = document.createElement('div');
+            effect.className = 'powerup-effect';
+            effect.style.cssText = `
+                position: absolute;
+                left: ${x}px;
+                top: ${y}px;
+                width: 50px;
+                height: 50px;
+                background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 100%);
+                border-radius: 50%;
+                z-index: 1000;
+            `;
+            document.getElementById('gameCanvas').appendChild(effect);
+            setTimeout(() => effect.remove(), 500);
+        }
+
+        // 添加受傷視覺效果
+        function createHitEffect(x, y) {
+            const effect = document.createElement('div');
+            effect.className = 'hit-effect';
+            effect.style.cssText = `
+                position: absolute;
+                left: ${x}px;
+                top: ${y}px;
+                width: 100px;
+                height: 100px;
+                background: radial-gradient(circle, rgba(255,0,0,0.5) 0%, rgba(255,0,0,0) 70%);
+                animation: hit-effect 0.3s ease-out forwards;
+                pointer-events: none;
+                z-index: 1000;
+            `;
+            
+            document.getElementById('gameCanvas').appendChild(effect);
+            
+            // 動畫結束後移除效果
+            effect.addEventListener('animationend', () => {
+                effect.remove();
+            });
+        }
+
+        // 添加相應的 CSS 動畫
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes hit-effect {
+                0% {
+                    transform: scale(0.5);
+                    opacity: 1;
+                }
+                100% {
+                    transform: scale(1.5);
+                    opacity: 0;
+                }
+            }
+
+            @keyframes shake {
+                0%, 100% {
+                    transform: translateX(0);
+                }
+                25% {
+                    transform: translateX(-5px);
+                }
+                75% {
+                    transform: translateX(5px);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 添加更新血量顯示的函數
+        function updateHealthBar() {
+            const healthBar = document.getElementById('healthBar');
+            healthBar.textContent = `HP: ${game.player.health}`;
+            // 當血量低於 30% 時顯示紅色
+            if (game.player.health < 30) {
+                healthBar.style.color = 'red';
+            }
+        }
+
+        // 創建 Boss
+        function createBoss() {
+            game.isBossFight = true;
+            game.bossHealth = 550;
+            
+            const boss = document.createElement('div');
+            boss.className = 'boss';
+            boss.style.cssText = `
+                position: absolute;
+                width: 400px;
+                height: 400px;
+                background-image: url('./image/boss.png');
+                background-size: contain;
+                background-repeat: no-repeat;
+                background-position: center;
+                top: -400px;
+                left: calc(50% - 200px);
+                transition: top 2s ease-out;
+            `;
+            
+            document.getElementById('gameCanvas').appendChild(boss);
+            
+            // Boss 入場動畫
+            setTimeout(() => {
+                boss.style.top = '50px';
+            }, 100);
+
+            game.boss = {
+                element: boss,
+                x: window.innerWidth / 2 - 200,
+                y: 50,
+                width: 400,
+                height: 400,
+                health: 50
+            };
+
+            // 開始 Boss 的攻擊模式
+            startBossAttack();
+        }
+
+        // Boss 的攻擊模式
+        function startBossAttack() {
+            const attackInterval = setInterval(() => {
+                if (!game.boss || game.state !== 'PLAYING') {
+                    clearInterval(attackInterval);
+                    return;
+                }
+
+                // 圓環彈幕
+                for (let i = 0; i < 12; i++) {
+                    const angle = (i * Math.PI * 2) / 12;
+                    createBossBullet(angle);
+                }
+            }, 2000);
+        }
+
+        // 創建 Boss 子彈
+        function createBossBullet(angle) {
+            const bullet = document.createElement('div');
+            bullet.className = 'boss-bullet';
+            bullet.style.cssText = `
+                position: absolute;
+                width: 20px;
+                height: 20px;
+                background: radial-gradient(circle, #ff0000 0%, #ff6600 100%);
+                border-radius: 50%;
+                box-shadow: 0 0 10px #ff0000;
+            `;
+
+            const speed = 5;
+            const bulletData = {
+                element: bullet,
+                x: game.boss.x + 200,  // Boss 中心點
+                y: game.boss.y + 200,
+                speedX: Math.cos(angle) * speed,
+                speedY: Math.sin(angle) * speed,
+                width: 20,
+                height: 20
+            };
+
+            bullet.style.left = bulletData.x + 'px';
+            bullet.style.top = bulletData.y + 'px';
+            document.getElementById('gameCanvas').appendChild(bullet);
+            game.enemyBullets.push(bulletData);
+        }
+
+        // 處理 Boss 被擊敗
+        function handleBossDefeat() {
+            // 停止 Boss 的移動和攻擊
+            game.isBossFight = false;
+            
+            // 創建多個爆炸效果
+            let explosionCount = 0;
+            const maxExplosions = 20;
+            
+            const explosionInterval = setInterval(() => {
+                if (explosionCount >= maxExplosions) {
+                    clearInterval(explosionInterval);
+                    // 3秒後結束遊戲
+                    setTimeout(() => {
+                        game.boss.element.remove();
+                        game.boss = null;
+                        gameOver();
+                    }, 3000);
+                    return;
+                }
+
+                // 在 Boss 身上隨機位置創建爆炸
+                createExplosion(
+                    game.boss.x + Math.random() * 400,
+                    game.boss.y + Math.random() * 400
+                );
+                
+                explosionCount++;
+            }, 150);
+        }
+
+        // 修改 createExplosion 函數，使爆炸效果更華麗
+        function createExplosion(x, y) {
+            AudioManager.playSound('explosion');
+            
+            const explosion = document.createElement('div');
+            explosion.className = 'explosion';
+            explosion.style.cssText = `
+                position: absolute;
+                width: 100px;
+                height: 100px;
+                left: ${x - 50}px;
+                top: ${y - 50}px;
+                background: radial-gradient(circle, #ff0 0%, #f00 50%, transparent 100%);
+                border-radius: 50%;
+                animation: explode 0.5s ease-out forwards;
+            `;
+            
+            document.getElementById('gameCanvas').appendChild(explosion);
+            setTimeout(() => explosion.remove(), 500);
+        }
+
+        // 添加爆炸動畫樣式
+        const explosionStyle = document.createElement('style');
+        explosionStyle.textContent = `
+            @keyframes explode {
+                0% {
+                    transform: scale(0.1);
+                    opacity: 1;
+                }
+                100% {
+                    transform: scale(2);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(explosionStyle);
+
+        init();
+    </script>
+</body>
+</html>

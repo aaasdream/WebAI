@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Matter.js 物理引擎演示</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">物體數量: 0 | FPS: 0</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script>
+        const Engine = Matter.Engine,
+            Render = Matter.Render,
+            Runner = Matter.Runner,
+            Bodies = Matter.Bodies,
+            Composite = Matter.Composite,
+            Common = Matter.Common,
+            Mouse = Matter.Mouse,
+            MouseConstraint = Matter.MouseConstraint,
+            Constraint = Matter.Constraint;
+
+        // 創建引擎
+        const engine = Engine.create();
+        
+        // 創建渲染器
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false
+            }
+        });
+
+        // 創建邊界
+        const walls = [
+            Bodies.rectangle(window.innerWidth/2, 0, window.innerWidth, 60, { isStatic: true }),
+            Bodies.rectangle(window.innerWidth/2, window.innerHeight, window.innerWidth, 60, { isStatic: true }),
+            Bodies.rectangle(0, window.innerHeight/2, 60, window.innerHeight, { isStatic: true }),
+            Bodies.rectangle(window.innerWidth, window.innerHeight/2, 60, window.innerHeight, { isStatic: true })
+        ];
+        Composite.add(engine.world, walls);
+
+        // 運行引擎和渲染器
+        Runner.run(engine);
+        Render.run(render);
+
+        let isMouseDown = false;
+        let lastTime = performance.now();
+        let frames = 0;
+        let fps = 0;
+
+        // 生成隨機顏色
+        function getRandomColor() {
+            return '#' + Math.floor(Math.random()*16777215).toString(16);
+        }
+
+        // 生成隨機形狀
+        function createRandomBody(x, y) {
+            const size = Common.random(20, 50);
+            const shapes = [
+                () => Bodies.rectangle(x, y, size, size, {
+                    render: { fillStyle: getRandomColor() }
+                }),
+                () => Bodies.circle(x, y, size/2, {
+                    render: { fillStyle: getRandomColor() }
+                }),
+                () => Bodies.polygon(x, y, Common.random(3, 8), size/2, {
+                    render: { fillStyle: getRandomColor() }
+                }),
+                () => {
+                    const vertices = [
+                        { x: -size/2, y: size/2 },
+                        { x: size/2, y: size/2 },
+                        { x: size/4, y: -size/2 },
+                        { x: -size/4, y: -size/2 }
+                    ];
+                    return Bodies.fromVertices(x, y, [vertices], {
+                        render: { fillStyle: getRandomColor() }
+                    });
+                }
+            ];
+            return shapes[Math.floor(Math.random() * shapes.length)]();
+        }
+
+        // 更新信息顯示
+        function updateInfo() {
+            frames++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = frames;
+                frames = 0;
+                lastTime = currentTime;
+            }
+            document.getElementById('info').textContent = 
+                `物體數量: ${Composite.allBodies(engine.world).length - 4} | FPS: ${fps}`;
+        }
+
+        // 添加狀態機相關代碼
+        const States = {
+            IDLE: 'IDLE',
+            CREATING: 'CREATING',
+            DRAGGING: 'DRAGGING'
+        };
+
+        let currentState = States.IDLE;
+        let selectedBody = null;
+        let mouseConstraint = null;
+        let elasticConstraint = null;
+
+        // 創建鼠標控制
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraintObject = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: {
+                    visible: false
+                }
+            }
+        });
+
+        // 禁用默認的鼠標約束
+        mouseConstraintObject.mouse.element.removeEventListener("mousedown", mouseConstraintObject.mouse.mousedown);
+        mouseConstraintObject.mouse.element.removeEventListener("mousemove", mouseConstraintObject.mouse.mousemove);
+        mouseConstraintObject.mouse.element.removeEventListener("mouseup", mouseConstraintObject.mouse.mouseup);
+
+        Composite.add(engine.world, mouseConstraintObject);
+
+        // 修改滑鼠事件處理
+        document.addEventListener('mousedown', (e) => {
+            const mousePosition = {
+                x: e.clientX,
+                y: e.clientY
+            };
+
+            // 檢查是否點擊到物體
+            const bodies = Composite.allBodies(engine.world).filter(body => !body.isStatic);
+            const clickedBody = bodies.find(body => Matter.Bounds.contains(body.bounds, mousePosition));
+
+            if (clickedBody) {
+                currentState = States.DRAGGING;
+                selectedBody = clickedBody;
+                // 創建彈性約束
+                elasticConstraint = Constraint.create({
+                    pointA: mousePosition,
+                    bodyB: clickedBody,
+                    stiffness: 0.1,
+                    render: {
+                        visible: true,
+                        lineWidth: 2,
+                        strokeStyle: '#ff0000'
+                    }
+                });
+                Composite.add(engine.world, elasticConstraint);
+            } else {
+                currentState = States.CREATING;
+            }
+            isMouseDown = true;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isMouseDown) return;
+
+            switch (currentState) {
+                case States.CREATING:
+                    const body = createRandomBody(e.clientX, e.clientY);
+                    Composite.add(engine.world, body);
+                    break;
+                case States.DRAGGING:
+                    if (elasticConstraint) {
+                        elasticConstraint.pointA = { x: e.clientX, y: e.clientY };
+                    }
+                    break;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isMouseDown = false;
+            currentState = States.IDLE;
+            if (elasticConstraint) {
+                Composite.remove(engine.world, elasticConstraint);
+                elasticConstraint = null;
+            }
+            selectedBody = null;
+        });
+
+        // 更新信息
+        setInterval(updateInfo, 1000/60);
+    </script>
+</body>
+</html>

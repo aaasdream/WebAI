@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0a0a2a;
+            cursor: none;
+        }
+
+        .star {
+            position: absolute;
+            color: white;
+            opacity: 0;
+            transition: opacity 1s;
+            pointer-events: none;
+        }
+
+        #moon {
+            position: fixed;
+            font-size: 200px;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div id="moon">🌑</div>
+
+    <script>
+        const moon = document.getElementById('moon');
+        const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+        let currentPhase = 0;
+
+        // 滑鼠跟隨效果
+        document.addEventListener('mousemove', (e) => {
+            moon.style.left = e.clientX - 100 + 'px';
+            moon.style.top = e.clientY - 100 + 'px';
+        });
+
+        // 月相動畫
+        setInterval(() => {
+            currentPhase = (currentPhase + 1) % moonPhases.length;
+            moon.textContent = moonPhases[currentPhase];
+        }, 200); // 每200毫秒改變一次（5張/秒）
+
+        // 創建星星
+        function createStar() {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.left = Math.random() * window.innerWidth + 'px';
+            star.style.top = Math.random() * window.innerHeight + 'px';
+            star.textContent = '⭐';
+            star.style.fontSize = Math.random() * 10 + 5 + 'px';
+            document.body.appendChild(star);
+
+            // 星星閃爍動畫
+            setTimeout(() => {
+                star.style.opacity = Math.random();
+            }, 100);
+
+            // 定期更新星星的亮度
+            setInterval(() => {
+                star.style.opacity = Math.random();
+            }, 1000 + Math.random() * 2000);
+        }
+
+        // 初始化星空
+        for (let i = 0; i < 100; i++) {
+            createStar();
+        }
+    </script>
+</body>
+</html>

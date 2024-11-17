@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.1));
+        }
+        /* 添加星星背景 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(white 1px, transparent 1px),
+                radial-gradient(white 1px, transparent 1px);
+            background-size: 50px 50px;
+            background-position: 0 0, 25px 25px;
+            opacity: 0.1;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <script>
+        // emoji 轉換函數
+        function emojiToDataURL(emoji, size = 50) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, size/2, size/2);
+            return canvas.toDataURL();
+        }
+
+        // 隨機動物 emoji 陣列
+        const animals = ['🐦', '🐸', '🐹', '🐰', '🦊', '🐱', '🐶', '🦁', '🐼', '🐨'];
+        
+        function getRandomAnimal() {
+            return animals[Math.floor(Math.random() * animals.length)];
+        }
+
+        // 預先生成圖片
+        const starTexture = emojiToDataURL('⭐', 30);
+        const buildingTexture = emojiToDataURL('🏢', 40);
+
+        const { Engine, Render, Runner, Bodies, Composite, Constraint, Mouse, MouseConstraint, Events, Body } = Matter;
+
+        const engine = Engine.create();
+        const world = engine.world;
+
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false,
+                background: 'transparent',
+                pixelRatio: window.devicePixelRatio
+            }
+        });
+
+        const walls = [
+            Bodies.rectangle(window.innerWidth/2, 0, window.innerWidth, 60, { 
+                isStatic: true,
+                render: { fillStyle: '#16213e' }
+            }),
+            Bodies.rectangle(window.innerWidth/2, window.innerHeight, window.innerWidth, 60, { 
+                isStatic: true,
+                render: { fillStyle: '#16213e' }
+            }),
+            Bodies.rectangle(0, window.innerHeight/2, 60, window.innerHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#16213e' }
+            }),
+            Bodies.rectangle(window.innerWidth, window.innerHeight/2, 60, window.innerHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#16213e' }
+            })
+        ];
+
+        const anchor = Bodies.circle(window.innerWidth/3, window.innerHeight/2, 15, {
+            isStatic: true,
+            render: { 
+                sprite: {
+                    texture: starTexture,
+                    xScale: 1,
+                    yScale: 1
+                }
+            },
+            collisionFilter: {
+                group: -1,
+                category: 0x0002,
+                mask: 0x0000
+            }
+        });
+
+        function createBall() {
+            const animalTexture = emojiToDataURL(getRandomAnimal(), 40);
+            return Bodies.circle(window.innerWidth/3, window.innerHeight/2, 20, {
+                render: { 
+                    sprite: {
+                        texture: animalTexture,
+                        xScale: 1,
+                        yScale: 1
+                    }
+                }
+            });
+        }
+
+        let currentBall = createBall();
+        
+        let elastic = Constraint.create({
+            pointA: { x: window.innerWidth/3, y: window.innerHeight/2 },
+            bodyB: currentBall,
+            stiffness: 0.01,
+            length: 50,
+            render: { 
+                strokeStyle: '#4a90e2',
+                lineWidth: 2,
+                type: 'line'
+            }
+        });
+
+        const blocks = [];
+        const blockWidth = 40;
+        const blockHeight = 40;
+        for (let i = 0; i < 10; i++) {
+            for (let j = 0; j < 2; j++) {
+                blocks.push(
+                    Bodies.rectangle(
+                        window.innerWidth * 0.8 + j * blockWidth,
+                        window.innerHeight - 30 - i * blockHeight,
+                        blockWidth,
+                        blockHeight,
+                        {
+                            render: { 
+                                sprite: {
+                                    texture: buildingTexture,
+                                    xScale: 1,
+                                    yScale: 1
+                                }
+                            }
+                        }
+                    )
+                );
+            }
+        }
+
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: { visible: false }
+            }
+        });
+
+        let initialSide;
+        Events.on(mouseConstraint, 'mousedown', function(event) {
+            const mousePosition = event.mouse.position;
+            initialSide = mousePosition.x < window.innerWidth/3 ? 'left' : 'right';
+        });
+
+        Events.on(mouseConstraint, 'mouseup', function(event) {
+            const mousePosition = event.mouse.position;
+            const currentSide = mousePosition.x < window.innerWidth/3 ? 'left' : 'right';
+            
+            if (initialSide !== currentSide) {
+                setTimeout(() => {
+                    Composite.remove(world, elastic);
+                }, 100);
+
+                setTimeout(() => {
+                    currentBall = createBall();
+                    elastic = Constraint.create({
+                        pointA: { x: window.innerWidth/3, y: window.innerHeight/2 },
+                        bodyB: currentBall,
+                        stiffness: 0.01,
+                        length: 50,
+                        render: { 
+                            strokeStyle: '#4a90e2',
+                            lineWidth: 2,
+                            type: 'line'
+                        }
+                    });
+                    Composite.add(world, [currentBall, elastic]);
+                }, 2000);
+            }
+        });
+
+        Composite.add(world, [
+            ...walls,
+            anchor,
+            currentBall,
+            elastic,
+            ...blocks,
+            mouseConstraint
+        ]);
+
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        window.addEventListener('resize', function() {
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>

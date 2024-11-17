@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>水果忍者</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+            background-image: url('./image/fruitback.jpg');
+            background-size: cover;
+            background-position: center;
+        }
+        #startButton {
+            position: absolute;
+            top: 65%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 24px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            display: block;
+            z-index: 100;
+        }
+        #gameOver {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 48px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <button id="startButton">開始遊戲</button>
+    <div id="gameOver">
+        <div>GAME OVER</div>
+        <div id="finalScore"></div>
+    </div>
+    <script>
+        // 遊戲狀態常量
+        const GameState = {
+            START: 'start',
+            PLAYING: 'playing',
+            GAMEOVER: 'gameover'
+        };
+
+        // 水果類
+        class Fruit {
+            constructor(game) {
+                this.game = game;
+                this.size = 120;
+                this.reset();
+                // 隨機選擇水果表情
+                this.emoji = ['🍎', '🍐', '🍊', '🍋', '🍉', '🍇'][Math.floor(Math.random() * 6)];
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                
+                // 添加水果顏色
+                this.colors = {
+                    '🍎': '255, 0, 0',
+                    '🍐': '0, 255, 0',
+                    '🍊': '255, 165, 0',
+                    '🍋': '255, 255, 0',
+                    '🍉': '255, 50, 50',
+                    '🍇': '128, 0, 128'
+                };
+            }
+
+            reset() {
+                // 從畫面底部下方開始
+                this.x = Math.random() * (this.game.canvas.width - this.size);
+                this.y = this.game.canvas.height + this.size;
+                
+                // 設置初始速度
+                this.speedX = (Math.random() - 0.5) * 5; // 左右移動速度
+
+                // 計算需要的初始速度以達到目標高度
+                // 目標高度：從頂部到1/2高度之間的隨機位置
+                const targetMaxHeight = this.game.canvas.height * 0.1; // 離頂部10%的位置
+                const targetMinHeight = this.game.canvas.height * 0.5; // 畫面中間
+                const targetHeight = targetMinHeight - (Math.random() * (targetMinHeight - targetMaxHeight));
+                
+                // 使用運動學公式計算初始速度
+                // v² = v₀² + 2ah
+                // 我們要求的是 v₀
+                // 當到達最高點時 v = 0
+                // h = 當前位置到目標高度的距離
+                const distanceToTarget = this.y - targetHeight;
+                this.gravity = 0.2;
+                
+                // v₀ = √(2gh)
+                this.speedY = -Math.sqrt(2 * this.gravity * distanceToTarget);
+            }
+
+            update() {
+                if (this.isSliced) return;
+
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += this.gravity;
+                this.rotation += this.rotationSpeed;
+
+                // 確保水果不會超出畫面左右邊界
+                if (this.x < 0) this.speedX = Math.abs(this.speedX);
+                if (this.x > this.game.canvas.width - this.size) this.speedX = -Math.abs(this.speedX);
+
+                // 檢查是否掉出畫面底部
+                if (this.y > this.game.canvas.height + this.size && !this.isSliced) {
+                    // 只有水果（非炸彈）落下才扣生命值
+                    if (!(this instanceof Bomb)) {
+                        this.game.lives--;
+                    }
+                    this.reset();
+                }
+            }
+
+            draw() {
+                const ctx = this.game.ctx;
+                ctx.save();
+                ctx.translate(this.x + this.size/2, this.y + this.size/2);
+                ctx.rotate(this.rotation);
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.emoji, 0, 0);
+                ctx.restore();
+            }
+
+            createJuiceParticles() {
+                const particles = [];
+                const color = this.colors[this.emoji];
+                for (let i = 0; i < 10; i++) {
+                    particles.push(new JuiceParticle(
+                        this.x + this.size/2,
+                        this.y + this.size/2,
+                        color,
+                        this.game
+                    ));
+                }
+                return particles;
+            }
+        }
+
+        // 炸彈類
+        class Bomb extends Fruit {
+            constructor(game) {
+                super(game);
+                this.emoji = '💣';
+            }
+        }
+
+        // 滑鼠軌跡類
+        class Trail {
+            constructor() {
+                this.points = [];
+                this.maxPoints = 10;
+            }
+
+            addPoint(x, y) {
+                this.points.push({ x, y });
+                if (this.points.length > this.maxPoints) {
+                    this.points.shift();
+                }
+            }
+
+            draw(ctx) {
+                if (this.points.length < 2) return;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+                for (let i = 1; i < this.points.length; i++) {
+                    ctx.lineTo(this.points[i].x, this.points[i].y);
+                }
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+
+        // 切割線類
+        class SlashLine {
+            constructor(startX, startY, endX, endY) {
+                this.startX = startX;
+                this.startY = startY;
+                this.endX = endX;
+                this.endY = endY;
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.moveTo(this.startX, this.startY);
+                ctx.lineTo(this.endX, this.endY);
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+
+        // 水果汁粒子類
+        class JuiceParticle {
+            constructor(x, y, color, game) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.game = game;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 10;
+                this.speedY = (Math.random() - 0.5) * 10;
+                this.gravity = 0.5;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.speedY += this.gravity;
+                return this.y < this.game.canvas.height + this.size;
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgb(${this.color})`;
+                ctx.fill();
+            }
+        }
+
+        // 音效管理器類
+        class SoundManager {
+            constructor() {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            playSliceSound() {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(
+                    300, this.audioContext.currentTime + 0.1
+                );
+                
+                gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(
+                    0.01, this.audioContext.currentTime + 0.1
+                );
+                
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.1);
+            }
+
+            playBombSound() {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(100, this.audioContext.currentTime);
+                
+                gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(
+                    0.01, this.audioContext.currentTime + 0.5
+                );
+                
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.5);
+            }
+        }
+
+        // 添加連擊系統類
+        class ComboSystem {
+            constructor() {
+                this.combo = 0;
+                this.lastSliceTime = 0;
+                this.comboTimeout = 1000; // 1秒內需要連擊
+                this.maxCombo = 0;
+            }
+
+            slice() {
+                const now = Date.now();
+                if (now - this.lastSliceTime < this.comboTimeout) {
+                    this.combo++;
+                } else {
+                    this.combo = 1;
+                }
+                this.lastSliceTime = now;
+                this.maxCombo = Math.max(this.maxCombo, this.combo);
+                return this.combo;
+            }
+
+            getComboMultiplier() {
+                return Math.min(this.combo, 5); // 最高5倍分數
+            }
+
+            reset() {
+                this.combo = 0;
+                this.lastSliceTime = 0;
+                this.maxCombo = 0;
+            }
+        }
+
+        // 遊戲主類
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.state = GameState.START;
+                this.score = 0;
+                this.lives = 3;
+                
+                this.resize();
+                this.setupEventListeners();
+                
+                // 修改初始化水果的部分
+                this.fruits = [];
+                this.trail = new Trail();
+                this.lastMouseX = null;
+                this.lastMouseY = null;
+                
+                // 添加水果生成相關的屬性
+                this.fruitSpawnTimer = 0;
+                this.fruitSpawnInterval = 1000; // 每秒生成一個水果
+                this.maxFruitsOnScreen = 6; // 畫面上最多同時存在的水果數量
+                
+                // 初始化幾個水果
+                for (let i = 0; i < 3; i++) {
+                    this.fruits.push(new Fruit(this));
+                }
+                // 添加一個炸彈
+                this.fruits.push(new Bomb(this));
+                
+                // 添加新的屬性
+                this.slashLines = [];
+                this.juiceParticles = [];
+                
+                // 添加音效和連擊系統
+                this.soundManager = new SoundManager();
+                this.comboSystem = new ComboSystem();
+                
+                // 添加特殊水果生成計時器
+                this.specialFruitTimer = 0;
+                this.specialFruitInterval = 10000; // 10秒
+                
+                // 添加難度相關屬性
+                this.gameStartTime = 0;
+                this.difficultyLevel = 1;
+                
+                // 添加背景音樂
+                this.bgMusic = new Audio('./music/music.mp3');
+                this.bgMusic.loop = true; // 循環播放
+            }
+
+            resize() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+            }
+
+            setupEventListeners() {
+                window.addEventListener('resize', () => this.resize());
+                document.getElementById('startButton').addEventListener('click', () => this.startGame());
+                
+                // 修改滑鼠事件處理
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (this.state !== GameState.PLAYING) return;
+                    
+                    const currentX = e.clientX;
+                    const currentY = e.clientY;
+                    
+                    this.trail.addPoint(currentX, currentY);
+                    
+                    // 確保有上一個點才進行切割檢測
+                    if (this.lastMouseX !== null && this.lastMouseY !== null) {
+                        // 創建切割線
+                        this.slashLines.push(new SlashLine(
+                            this.lastMouseX,
+                            this.lastMouseY,
+                            currentX,
+                            currentY
+                        ));
+                        
+                        // 檢查碰撞
+                        this.checkLineCollisions(
+                            this.lastMouseX,
+                            this.lastMouseY,
+                            currentX,
+                            currentY
+                        );
+                    }
+                    
+                    this.lastMouseX = currentX;
+                    this.lastMouseY = currentY;
+                });
+
+                // 添加滑鼠離開和滑鼠按下件處理
+                this.canvas.addEventListener('mouseout', () => {
+                    this.lastMouseX = null;
+                    this.lastMouseY = null;
+                });
+
+                this.canvas.addEventListener('mouseenter', () => {
+                    this.lastMouseX = null;
+                    this.lastMouseY = null;
+                });
+            }
+
+            startGame() {
+                this.state = GameState.PLAYING;
+                this.score = 0;
+                this.lives = 3;
+                document.getElementById('startButton').style.display = 'none';
+                document.getElementById('gameOver').style.display = 'none';
+                this.comboSystem.reset();
+                this.specialFruitTimer = Date.now();
+                this.gameStartTime = Date.now();
+                this.difficultyLevel = 1;
+                
+                // 播放背景音樂
+                this.bgMusic.play().catch(error => {
+                    console.log("音樂播放失敗:", error);
+                });
+                
+                this.gameLoop();
+            }
+
+            checkCollisions(mouseX, mouseY) {
+                // 簡單的點碰檢測
+                this.fruits.forEach(fruit => {
+                    if (!fruit.isSliced) {
+                        const dx = mouseX - (fruit.x + fruit.size/2);
+                        const dy = mouseY - (fruit.y + fruit.size/2);
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < fruit.size/2) {
+                            if (fruit instanceof Bomb) {
+                                this.lives--;
+                                fruit.reset();
+                                this.shakeScreen();
+                                this.soundManager.playBombSound();
+                                this.comboSystem.reset();
+                            } else {
+                                this.score += 10;
+                                fruit.isSliced = true;
+                                setTimeout(() => fruit.reset(), 1000);
+                            }
+                        }
+                    }
+                });
+            }
+
+            shakeScreen() {
+                this.canvas.style.transform = 'translate(10px, 10px)';
+                setTimeout(() => {
+                    this.canvas.style.transform = 'translate(-10px, -10px)';
+                    setTimeout(() => {
+                        this.canvas.style.transform = 'translate(0, 0)';
+                    }, 50);
+                }, 50);
+            }
+
+            checkLineCollisions(x1, y1, x2, y2) {
+                // 確保所有參數都是有效的數字
+                if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
+                    return;
+                }
+
+                this.fruits.forEach(fruit => {
+                    if (!fruit.isSliced) {
+                        const fruitCenterX = fruit.x + fruit.size/2;
+                        const fruitCenterY = fruit.y + fruit.size/2;
+                        
+                        if (this.lineCircleCollision(
+                            x1, y1, x2, y2,
+                            fruitCenterX, fruitCenterY,
+                            fruit.size/2
+                        )) {
+                            if (fruit instanceof Bomb) {
+                                this.lives--;
+                                fruit.reset();
+                                this.shakeScreen();
+                                this.soundManager.playBombSound();
+                                this.comboSystem.reset();
+                            } else {
+                                const comboMultiplier = this.comboSystem.getComboMultiplier();
+                                const baseScore = fruit.isSpecial ? 30 : 10;
+                                this.score += baseScore * comboMultiplier;
+                                
+                                const combo = this.comboSystem.slice();
+                                if (combo > 1) {
+                                    this.showComboText(fruit.x, fruit.y, combo);
+                                }
+                                
+                                fruit.isSliced = true;
+                                this.juiceParticles.push(...fruit.createJuiceParticles());
+                                this.soundManager.playSliceSound();
+                                fruit.reset();
+                            }
+                        }
+                    }
+                });
+            }
+
+            lineCircleCollision(x1, y1, x2, y2, cx, cy, r) {
+                // 確保所有參數都是有效的數字
+                if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2) || 
+                    isNaN(cx) || isNaN(cy) || isNaN(r)) {
+                    return false;
+                }
+
+                // 計算線段到圓心的最短距離
+                const lineLength = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+                if (lineLength === 0) return false;  // 防止除以零
+
+                const dot = (((cx-x1)*(x2-x1) + (cy-y1)*(y2-y1)) / (lineLength**2));
+                const closestX = x1 + (dot * (x2-x1));
+                const closestY = y1 + (dot * (y2-y1));
+                
+                // 檢查最近點是否在線段上
+                if (dot < 0) {
+                    return Math.sqrt((cx-x1)**2 + (cy-y1)**2) <= r;
+                }
+                if (dot > 1) {
+                    return Math.sqrt((cx-x2)**2 + (cy-y2)**2) <= r;
+                }
+                
+                // 計算最短距離
+                const distance = Math.sqrt((cx-closestX)**2 + (cy-closestY)**2);
+                return distance <= r;
+            }
+
+            showComboText(x, y, combo) {
+                const ctx = this.ctx;
+                ctx.save();
+                
+                // 根據連擊數改變顏色和大小
+                const fontSize = Math.min(48 + combo * 2, 72);
+                const colors = ['yellow', 'orange', 'red', 'purple', 'blue'];
+                const colorIndex = Math.min(combo - 1, colors.length - 1);
+                
+                ctx.font = `${fontSize}px Arial`;
+                ctx.fillStyle = colors[colorIndex];
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.textAlign = 'center';
+                
+                const text = `${combo}x COMBO!`;
+                ctx.strokeText(text, x, y - 50);
+                ctx.fillText(text, x, y - 50);
+                
+                ctx.restore();
+            }
+
+            updateDifficulty() {
+                // 每60秒增加一次難度
+                const gameTime = (Date.now() - this.gameStartTime) / 1000;
+                this.difficultyLevel = Math.floor(gameTime / 60) + 1;
+                
+                // 根據難度調整生成間隔
+                this.fruitSpawnInterval = Math.max(1000 - (this.difficultyLevel * 100), 400);
+                this.maxFruitsOnScreen = Math.min(6 + Math.floor(this.difficultyLevel / 2), 10);
+            }
+
+            gameLoop() {
+                if (this.state !== GameState.PLAYING) return;
+
+                // 清空畫面
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // 生成新水果
+                const now = Date.now();
+                if (now - this.fruitSpawnTimer > this.fruitSpawnInterval) {
+                    this.fruitSpawnTimer = now;
+                    
+                    const activeFruits = this.fruits.filter(f => !f.isSliced).length;
+                    
+                    if (activeFruits < this.maxFruitsOnScreen) {
+                        if (Math.random() < 0.97) {
+                            this.fruits.push(new Fruit(this));
+                        } else {
+                            this.fruits.push(new Bomb(this));
+                        }
+                    }
+                }
+
+                // 更新和繪製切割線
+                this.slashLines.forEach(line => line.draw(this.ctx));
+                // 每幀清除所有切割線
+                this.slashLines = [];
+
+                // 更新和繪製水果汁粒子
+                this.juiceParticles = this.juiceParticles.filter(particle => {
+                    const alive = particle.update();
+                    if (alive) particle.draw(this.ctx);
+                    return alive;
+                });
+
+                // 更新和繪製水果
+                this.fruits = this.fruits.filter(fruit => {
+                    if (fruit.y > this.canvas.height + fruit.size * 2) {
+                        return false;
+                    }
+                    fruit.update();
+                    fruit.draw();
+                    return true;
+                });
+
+                // 繪製軌跡
+                this.trail.draw(this.ctx);
+
+                // 繪製UI
+                this.drawUI();
+
+                // 檢查遊戲結束
+                if (this.lives <= 0) {
+                    this.gameOver();
+                    return;
+                }
+
+                this.updateDifficulty();
+
+                requestAnimationFrame(() => this.gameLoop());
+            }
+
+            drawUI() {
+                this.ctx.fillStyle = 'white';
+                this.ctx.font = '30px Arial';
+                this.ctx.fillText(`分數: ${this.score}`, 20, 40);
+                
+                // 顯示當前連擊數
+                if (this.comboSystem.combo > 1) {
+                    this.ctx.fillText(`連擊: ${this.comboSystem.combo}x`, 20, 80);
+                }
+                
+                // 顯示最高連擊數
+                this.ctx.fillText(`最高連擊: ${this.comboSystem.maxCombo}x`, 20, 120);
+                
+                // 繪製生命值
+                const hearts = '❤️'.repeat(this.lives);
+                this.ctx.font = '30px Arial';
+                this.ctx.fillText(hearts, this.canvas.width - 120, 40);
+            }
+
+            gameOver() {
+                this.state = GameState.GAMEOVER;
+                document.getElementById('gameOver').style.display = 'block';
+                document.getElementById('finalScore').textContent = 
+                    `最終分數: ${this.score}\n最高連擊: ${this.comboSystem.maxCombo}x`;
+                
+                // 停止背景音樂
+                this.bgMusic.pause();
+                this.bgMusic.currentTime = 0;
+                
+                setTimeout(() => {
+                    document.getElementById('startButton').style.display = 'block';
+                    this.state = GameState.START;
+                }, 3000);
+            }
+        }
+
+        // 初始化遊戲
+        const game = new Game();
+    </script>
+</body>
+</html>

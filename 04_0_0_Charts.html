@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>圖表展示</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .chart-container {
+            width: 600px;
+            height: 400px;
+            margin: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        .chart-title {
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <h1>互動式圖表展示</h1>
+
+    <!-- 折線圖 -->
+    <div class="chart-container">
+        <div class="chart-title">月度銷售趨勢 - 折線圖</div>
+        <canvas id="lineChart"></canvas>
+    </div>
+
+    <!-- 長條圖 -->
+    <div class="chart-container">
+        <div class="chart-title">產品銷售比較 - 長條圖</div>
+        <canvas id="barChart"></canvas>
+    </div>
+
+    <!-- 圓餅圖 -->
+    <div class="chart-container">
+        <div class="chart-title">市場佔有率 - 圓餅圖</div>
+        <canvas id="pieChart"></canvas>
+    </div>
+
+    <!-- 環形圖 -->
+    <div class="chart-container">
+        <div class="chart-title">收入來源分布 - 環形圖</div>
+        <canvas id="doughnutChart"></canvas>
+    </div>
+
+    <!-- 散點圖 -->
+    <div class="chart-container">
+        <div class="chart-title">身高體重分布 - 散點圖</div>
+        <canvas id="scatterChart"></canvas>
+    </div>
+
+    <!-- 氣泡圖 -->
+    <div class="chart-container">
+        <div class="chart-title">產品分析 - 氣泡圖</div>
+        <canvas id="bubbleChart"></canvas>
+    </div>
+
+    <!-- 區域圖 -->
+    <div class="chart-container">
+        <div class="chart-title">用戶成長趨勢 - 區域圖</div>
+        <canvas id="areaChart"></canvas>
+    </div>
+
+    <!-- 堆疊柱狀圖 -->
+    <div class="chart-container">
+        <div class="chart-title">季度銷售分析 - 堆疊柱狀圖</div>
+        <canvas id="stackedBarChart"></canvas>
+    </div>
+
+    <!-- 雷達圖 -->
+    <div class="chart-container">
+        <div class="chart-title">技能評估 - 雷達圖</div>
+        <canvas id="radarChart"></canvas>
+    </div>
+
+    <!-- 極座標圖 -->
+    <div class="chart-container">
+        <div class="chart-title">月度銷售分布 - 極座標圖</div>
+        <canvas id="polarChart"></canvas>
+    </div>
+
+    <!-- 混合圖表 -->
+    <div class="chart-container">
+        <div class="chart-title">銷售與利潤分析 - 混合圖表</div>
+        <canvas id="mixedChart"></canvas>
+    </div>
+
+    <!-- 時間軸圖表 -->
+    <div class="chart-container">
+        <div class="chart-title">專案進度 - 時間軸圖表</div>
+        <canvas id="timelineChart"></canvas>
+    </div>
+
+    <!-- 金融K線圖 -->
+    <div class="chart-container">
+        <div class="chart-title">股票走勢 - K線圖</div>
+        <canvas id="candlestickChart"></canvas>
+    </div>
+
+    <!-- 瀑布圖 -->
+    <div class="chart-container">
+        <div class="chart-title">財務分析 - 瀑布圖</div>
+        <canvas id="waterfallChart"></canvas>
+    </div>
+
+    <!-- 箱形圖 -->
+    <div class="chart-container">
+        <div class="chart-title">數據分布 - 箱形圖</div>
+        <canvas id="boxPlotChart"></canvas>
+    </div>
+
+    <!-- 熱力圖的樣式 -->
+    <style>
+    .heatmap-container {
+        display: grid;
+        grid-template-columns: repeat(24, 1fr);
+        gap: 1px;
+        background: #eee;
+        padding: 10px;
+        border-radius: 4px;
+    }
+
+    .heatmap-cell {
+        aspect-ratio: 1;
+        border-radius: 2px;
+        transition: all 0.3s ease;
+    }
+
+    .heatmap-cell:hover {
+        transform: scale(1.1);
+        z-index: 1;
+    }
+
+    .heatmap-legend {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 10px;
+        gap: 10px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        font-size: 12px;
+    }
+
+    .legend-color {
+        width: 20px;
+        height: 20px;
+        margin-right: 5px;
+        border-radius: 2px;
+    }
+
+    .axis-label {
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+        padding: 5px;
+    }
+
+    .x-axis {
+        display: grid;
+        grid-template-columns: repeat(24, 1fr);
+        margin-bottom: 5px;
+    }
+
+    .y-axis {
+        position: absolute;
+        left: -25px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        height: 100%;
+    }
+    </style>
+
+    <!-- 熱力圖的 HTML 結構 -->
+    <div class="chart-container" style="position: relative; padding-left: 30px;">
+        <div class="chart-title">活動分布 - 熱力圖</div>
+        <div class="x-axis">
+            <!-- JavaScript 將填充小時標籤 -->
+        </div>
+        <div class="y-axis">
+            <!-- JavaScript 將填充星期標籤 -->
+        </div>
+        <div class="heatmap-container" id="heatmapChart">
+            <!-- JavaScript 將填充熱力圖單元格 -->
+        </div>
+        <div class="heatmap-legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(75, 192, 192, 0.1)"></div>
+                <span>低</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(75, 192, 192, 0.5)"></div>
+                <span>中</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(75, 192, 192, 0.9)"></div>
+                <span>高</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 折線圖
+        const lineCtx = document.getElementById('lineChart').getContext('2d');
+        new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: ['一月', '二月', '三月', '四月', '五月', '六月'],
+                datasets: [{
+                    label: '銷售額',
+                    data: [12, 19, 3, 5, 2, 3],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                }
+            }
+        });
+
+        // 長條圖
+        const barCtx = document.getElementById('barChart').getContext('2d');
+        new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: ['產品A', '產品B', '產品C', '產品D'],
+                datasets: [{
+                    label: '銷售量',
+                    data: [12, 19, 3, 5],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.5)',
+                        'rgba(54, 162, 235, 0.5)',
+                        'rgba(255, 206, 86, 0.5)',
+                        'rgba(75, 192, 192, 0.5)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+            }
+        });
+
+        // 圓餅圖
+        const pieCtx = document.getElementById('pieChart').getContext('2d');
+        new Chart(pieCtx, {
+            type: 'pie',
+            data: {
+                labels: ['紅色', '藍色', '黃色', '綠色'],
+                datasets: [{
+                    data: [30, 20, 25, 25],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.8)',
+                        'rgba(54, 162, 235, 0.8)',
+                        'rgba(255, 206, 86, 0.8)',
+                        'rgba(75, 192, 192, 0.8)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+            }
+        });
+
+        // 環形圖
+        const doughnutCtx = document.getElementById('doughnutChart').getContext('2d');
+        new Chart(doughnutCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['線上銷售', '實體店面', '代理商', '其他'],
+                datasets: [{
+                    data: [40, 30, 20, 10],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.8)',
+                        'rgba(54, 162, 235, 0.8)',
+                        'rgba(255, 206, 86, 0.8)',
+                        'rgba(75, 192, 192, 0.8)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+            }
+        });
+
+        // 散點圖
+        const scatterCtx = document.getElementById('scatterChart').getContext('2d');
+        new Chart(scatterCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: '男性',
+                    data: [
+                        { x: 170, y: 65 },
+                        { x: 175, y: 70 },
+                        { x: 165, y: 60 },
+                        { x: 180, y: 75 }
+                    ],
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                }, {
+                    label: '女性',
+                    data: [
+                        { x: 160, y: 50 },
+                        { x: 165, y: 55 },
+                        { x: 155, y: 48 },
+                        { x: 170, y: 58 }
+                    ],
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: '身高 (cm)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '體重 (kg)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // 氣泡圖
+        const bubbleCtx = document.getElementById('bubbleChart').getContext('2d');
+        new Chart(bubbleCtx, {
+            type: 'bubble',
+            data: {
+                datasets: [{
+                    label: '產品A',
+                    data: [
+                        { x: 20, y: 30, r: 15 },
+                        { x: 40, y: 10, r: 10 },
+                        { x: 30, y: 20, r: 8 }
+                    ],
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)'
+                }, {
+                    label: '產品B',
+                    data: [
+                        { x: 10, y: 40, r: 12 },
+                        { x: 20, y: 20, r: 20 },
+                        { x: 30, y: 30, r: 15 }
+                    ],
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: '市場份額'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '利潤率'
+                        }
+                    }
+                }
+            }
+        });
+
+        // 區域圖
+        const areaCtx = document.getElementById('areaChart').getContext('2d');
+        new Chart(areaCtx, {
+            type: 'line',
+            data: {
+                labels: ['一月', '二月', '三月', '四月', '五月', '六月'],
+                datasets: [{
+                    label: '活躍用戶',
+                    data: [1000, 1500, 2000, 2500, 3000, 3500],
+                    fill: true,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // 堆疊柱狀圖
+        const stackedBarCtx = document.getElementById('stackedBarChart').getContext('2d');
+        new Chart(stackedBarCtx, {
+            type: 'bar',
+            data: {
+                labels: ['第一季', '第二季', '第三季', '第四季'],
+                datasets: [{
+                    label: '產品A',
+                    data: [300, 400, 200, 500],
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)'
+                }, {
+                    label: '產品B',
+                    data: [200, 300, 400, 300],
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                }, {
+                    label: '產品C',
+                    data: [100, 200, 300, 400],
+                    backgroundColor: 'rgba(255, 206, 86, 0.5)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        stacked: true
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // 雷達圖
+        const radarCtx = document.getElementById('radarChart').getContext('2d');
+        new Chart(radarCtx, {
+            type: 'radar',
+            data: {
+                labels: ['溝通能力', '團隊合作', '技術能力', '創新思維', '問題解決', '領導力'],
+                datasets: [{
+                    label: '員工A',
+                    data: [85, 90, 75, 80, 85, 70],
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    pointBackgroundColor: 'rgba(255, 99, 132, 1)'
+                }, {
+                    label: '員工B',
+                    data: [70, 85, 95, 70, 88, 80],
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    pointBackgroundColor: 'rgba(54, 162, 235, 1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 100,
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // 極座標圖
+        const polarCtx = document.getElementById('polarChart').getContext('2d');
+        new Chart(polarCtx, {
+            type: 'polarArea',
+            data: {
+                labels: ['一月', '二月', '三月', '四月', '五月', '六月'],
+                datasets: [{
+                    data: [11, 16, 7, 14, 12, 9],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.5)',
+                        'rgba(54, 162, 235, 0.5)',
+                        'rgba(255, 206, 86, 0.5)',
+                        'rgba(75, 192, 192, 0.5)',
+                        'rgba(153, 102, 255, 0.5)',
+                        'rgba(255, 159, 64, 0.5)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    }
+                }
+            }
+        });
+
+        // 混合圖表
+        const mixedCtx = document.getElementById('mixedChart').getContext('2d');
+        new Chart(mixedCtx, {
+            type: 'bar',
+            data: {
+                labels: ['一月', '二月', '三月', '四月', '五月', '六月'],
+                datasets: [{
+                    label: '銷售額',
+                    data: [50, 60, 70, 65, 80, 75],
+                    type: 'bar',
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    order: 2
+                }, {
+                    label: '利潤率',
+                    data: [30, 35, 40, 38, 42, 45],
+                    type: 'line',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    fill: false,
+                    order: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // 時間軸圖表（使用橫向條形圖模擬）
+        const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+        new Chart(timelineCtx, {
+            type: 'bar',
+            data: {
+                labels: ['任務A', '任務B', '任務C', '任務D', '任務E'],
+                datasets: [{
+                    label: '完成進度',
+                    data: [80, 65, 45, 30, 20],
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.5)',
+                        'rgba(255, 206, 86, 0.5)',
+                        'rgba(255, 99, 132, 0.5)',
+                        'rgba(54, 162, 235, 0.5)',
+                        'rgba(153, 102, 255, 0.5)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `完成度: ${context.raw}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 金融K線圖
+        const candlestickCtx = document.getElementById('candlestickChart').getContext('2d');
+        new Chart(candlestickCtx, {
+            type: 'bar',
+            data: {
+                labels: ['週一', '週二', '週三', '週四', '週五'],
+                datasets: [{
+                    label: '股價範圍',
+                    data: [
+                        [20, 25, 18, 23], // [開盤, 最高, 最低, 收盤]
+                        [23, 28, 20, 25],
+                        [25, 30, 22, 28],
+                        [28, 32, 24, 30],
+                        [30, 35, 26, 32]
+                    ],
+                    backgroundColor: context => {
+                        const data = context.dataset.data[context.dataIndex];
+                        return data[0] <= data[3] ? 'rgba(75, 192, 192, 0.5)' : 'rgba(255, 99, 132, 0.5)';
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const data = context.dataset.data[context.dataIndex];
+                                return [
+                                    `開盤: ${data[0]}`,
+                                    `最高: ${data[1]}`,
+                                    `最低: ${data[2]}`,
+                                    `收盤: ${data[3]}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 瀑布圖
+        const waterfallCtx = document.getElementById('waterfallChart').getContext('2d');
+        new Chart(waterfallCtx, {
+            type: 'bar',
+            data: {
+                labels: ['初始', '收入', '支出', '稅金', '最終'],
+                datasets: [{
+                    data: [1000, 500, -300, -100, 1100],
+                    backgroundColor: context => {
+                        const value = context.dataset.data[context.dataIndex];
+                        if (context.dataIndex === 0 || context.dataIndex === 4) return 'rgba(75, 192, 192, 0.5)';
+                        return value > 0 ? 'rgba(54, 162, 235, 0.5)' : 'rgba(255, 99, 132, 0.5)';
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // 箱形圖數據生成函數
+        function generateBoxPlotData(min, q1, median, q3, max) {
+            return {
+                min: min,
+                q1: q1,
+                median: median,
+                q3: q3,
+                max: max
+            };
+        }
+
+        // 箱形圖
+        const boxPlotCtx = document.getElementById('boxPlotChart').getContext('2d');
+        new Chart(boxPlotCtx, {
+            type: 'bar',
+            data: {
+                labels: ['A組', 'B組', 'C組'],
+                datasets: [{
+                    label: '數據分布',
+                    data: [
+                        generateBoxPlotData(10, 20, 25, 30, 40),
+                        generateBoxPlotData(15, 25, 30, 35, 45),
+                        generateBoxPlotData(20, 30, 35, 40, 50)
+                    ],
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const data = context.dataset.data[context.dataIndex];
+                                return [
+                                    `最小值: ${data.min}`,
+                                    `第一四分位: ${data.q1}`,
+                                    `中位數: ${data.median}`,
+                                    `第三四分位: ${data.q3}`,
+                                    `最大值: ${data.max}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 生成模擬數據
+        function generateHeatmapData() {
+            const data = [];
+            for (let i = 0; i < 7; i++) {
+                const row = [];
+                for (let j = 0; j < 24; j++) {
+                    // 生成更真實的數據模式
+                    let value = 0;
+                    // 工作日的工作時間（9-18點）活動較多
+                    if (i >= 1 && i <= 5 && j >= 9 && j <= 18) {
+                        value = Math.floor(Math.random() * 60) + 40; // 40-100
+                    } else {
+                        value = Math.floor(Math.random() * 30); // 0-30
+                    }
+                    // 午休時間（12-14點）活動較少
+                    if (j >= 12 && j <= 13) {
+                        value = Math.max(0, value - 30);
+                    }
+                    row.push(value);
+                }
+                data.push(row);
+            }
+            return data;
+        }
+
+        // 初始化熱力圖
+        function initHeatmap() {
+            const container = document.getElementById('heatmapChart');
+            const xAxis = document.querySelector('.x-axis');
+            const yAxis = document.querySelector('.y-axis');
+            const data = generateHeatmapData();
+            const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+
+            // 添加小時標籤
+            for (let i = 0; i < 24; i++) {
+                const label = document.createElement('div');
+                label.className = 'axis-label';
+                label.textContent = `${i}`;
+                xAxis.appendChild(label);
+            }
+
+            // 添加星期標籤
+            for (let i = 0; i < 7; i++) {
+                const label = document.createElement('div');
+                label.className = 'axis-label';
+                label.textContent = weekDays[i];
+                yAxis.appendChild(label);
+            }
+
+            // 創建熱力圖單元格
+            for (let i = 0; i < 7; i++) {
+                for (let j = 0; j < 24; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'heatmap-cell';
+                    const value = data[i][j];
+                    cell.style.backgroundColor = `rgba(75, 192, 192, ${value / 100})`;
+                    cell.title = `星期${weekDays[i]} ${j}時: ${value}%`;
+                    
+                    // 添加懸停效果
+                    cell.addEventListener('mouseover', function() {
+                        this.style.boxShadow = '0 0 5px rgba(0,0,0,0.3)';
+                    });
+                    cell.addEventListener('mouseout', function() {
+                        this.style.boxShadow = 'none';
+                    });
+                    
+                    container.appendChild(cell);
+                }
+            }
+        }
+
+        // 頁面加載完成後初始化熱力圖
+        document.addEventListener('DOMContentLoaded', initHeatmap);
+
+        // 添加全局交互配置
+        Chart.defaults.interaction = {
+            mode: 'nearest',
+            intersect: true,
+            axis: 'xy'
+        };
+
+        // 添加全局動畫配置
+        Chart.defaults.animation = {
+            duration: 1500,
+            easing: 'easeInOutQuart',
+            onProgress: function(animation) {
+                const progress = animation.currentStep / animation.numSteps;
+                // 可以在這裡添加進度指示器
+            }
+        };
+    </script>
+
+    <style>
+        .chart-container {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chart-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, 
+                rgba(75, 192, 192, 0.8), 
+                rgba(54, 162, 235, 0.8)
+            );
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .chart-container:hover::before {
+            opacity: 1;
+        }
+
+        .chart-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .chart-title {
+            color: #333;
+            font-size: 16px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        @media (max-width: 768px) {
+            .chart-container {
+                width: 100%;
+                margin: 10px 0;
+            }
+            
+            .chart-title {
+                font-size: 14px;
+                padding: 10px;
+            }
+        }
+
+        /* 添加深色模式支持 */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #1a1a1a;
+                color: #fff;
+            }
+            
+            .chart-container {
+                background-color: #2d2d2d;
+            }
+            
+            .chart-title {
+                background-color: #333;
+                color: #fff;
+                border-bottom: 1px solid #444;
+            }
+        }
+    </style>
+</body>
+</html>
