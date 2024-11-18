@@ -19,6 +19,23 @@
     // Matter.js 模組別名
     const { Engine, Render, World, Bodies, Body, Constraint, Composite } = Matter;
 
+    // 在 script 開頭添加轉換函數
+    function emojiToURL(emoji, size = 100) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.font = `${size}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, size/2, size/2 + size/8);
+        return canvas.toDataURL();
+    }
+
+    // 創建圖片URL
+    const carImageURL = emojiToURL('🚗', 200);
+    const wheelImageURL = emojiToURL('⚫', 50);
+
     // 創建引擎
     const engine = Engine.create();
     
@@ -37,19 +54,37 @@
     // 創建車身和輪子
     const carBody = Bodies.rectangle(400, 300, 200, 100, {
         collisionFilter: { group: -1 },
-        render: { fillStyle: '#F94144' }
+        render: {
+            sprite: {
+                texture: carImageURL,
+                xScale: 1,
+                yScale: 0.5
+            }
+        }
     });
 
     const wheelA = Bodies.circle(480, 350, 25, {
         collisionFilter: { group: -1 },
         friction: 0.8,
-        render: { fillStyle: '#4A4E69' }
+        render: {
+            sprite: {
+                texture: wheelImageURL,
+                xScale: 1,
+                yScale: 1
+            }
+        }
     });
 
     const wheelB = Bodies.circle(320, 350, 25, {
         collisionFilter: { group: -1 },
         friction: 0.8,
-        render: { fillStyle: '#4A4E69' }
+        render: {
+            sprite: {
+                texture: wheelImageURL,
+                xScale: 1,
+                yScale: 1
+            }
+        }
     });
 
     // 創建約束
@@ -101,12 +136,12 @@
     document.addEventListener('keydown', (event) => {
         switch(event.key) {
             case 'ArrowRight':
-                Body.setAngularVelocity(wheelA, 0.2);
-                Body.setAngularVelocity(wheelB, 0.2);
+                Body.setAngularVelocity(wheelA, 0.3);
+                Body.setAngularVelocity(wheelB, 0.3);
                 break;
             case 'ArrowLeft':
-                Body.setAngularVelocity(wheelA, -0.2);
-                Body.setAngularVelocity(wheelB, -0.2);
+                Body.setAngularVelocity(wheelA, -0.3);
+                Body.setAngularVelocity(wheelB, -0.3);
                 break;
             case ' ':
                 Body.applyForce(carBody, carBody.position, { x: 0, y: -0.4 });

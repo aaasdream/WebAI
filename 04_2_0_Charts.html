@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>成績分析系統</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .chart-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .chart {
+            flex: 1;
+            min-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="fileInput" accept=".txt,.csv">
+    <button onclick="loadFile()">讀取成績單</button>
+    
+    <div id="resultTable"></div>
+    <div id="statsTable"></div>
+    <div class="chart-container">
+        <div id="boxPlot" class="chart"></div>
+        <div id="heatmap" class="chart"></div>
+    </div>
+
+    <script>
+        function loadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const text = e.target.result;
+                    processData(text);
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        function processData(text) {
+            const rows = text.trim().split('\n');
+            const headers = rows[0].split('\t');
+            const data = rows.slice(1).map(row => row.split('\t'));
+            
+            // 顯示原始成績表
+            displayTable(headers, data);
+            
+            // 計算統計數據
+            const stats = calculateStats(headers, data);
+            displayStats(stats);
+            
+            // 繪製圖表
+            drawBoxPlot(headers, data);
+            drawHeatmap(headers, data);
+        }
+
+        function calculateStats(headers, data) {
+            const stats = {};
+            for (let i = 1; i < headers.length; i++) {
+                const subject = headers[i];
+                const scores = data.map(row => parseFloat(row[i]));
+                
+                stats[subject] = {
+                    average: mean(scores),
+                    max: Math.max(...scores),
+                    min: Math.min(...scores),
+                    stdDev: standardDeviation(scores)
+                };
+            }
+            return stats;
+        }
+
+        function mean(numbers) {
+            return numbers.reduce((a, b) => a + b) / numbers.length;
+        }
+
+        function standardDeviation(numbers) {
+            const avg = mean(numbers);
+            const squareDiffs = numbers.map(n => Math.pow(n - avg, 2));
+            return Math.sqrt(mean(squareDiffs));
+        }
+
+        function displayTable(headers, data) {
+            const table = document.createElement('table');
+            
+            // 表頭
+            const headerRow = document.createElement('tr');
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+            table.appendChild(headerRow);
+            
+            // 數據行
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                row.forEach(cell => {
+                    const td = document.createElement('td');
+                    td.textContent = cell;
+                    tr.appendChild(td);
+                });
+                table.appendChild(tr);
+            });
+            
+            document.getElementById('resultTable').innerHTML = '';
+            document.getElementById('resultTable').appendChild(table);
+        }
+
+        function displayStats(stats) {
+            const table = document.createElement('table');
+            
+            // 表頭
+            const headerRow = document.createElement('tr');
+            const metrics = ['科目', '平均分數', '最高分數', '最低分數', '標準差'];
+            metrics.forEach(metric => {
+                const th = document.createElement('th');
+                th.textContent = metric;
+                headerRow.appendChild(th);
+            });
+            table.appendChild(headerRow);
+            
+            // 統計數據
+            for (const subject in stats) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${subject}</td>
+                    <td>${stats[subject].average.toFixed(2)}</td>
+                    <td>${stats[subject].max}</td>
+                    <td>${stats[subject].min}</td>
+                    <td>${stats[subject].stdDev.toFixed(2)}</td>
+                `;
+                table.appendChild(tr);
+            }
+            
+            document.getElementById('statsTable').innerHTML = '';
+            document.getElementById('statsTable').appendChild(table);
+        }
+
+        function drawBoxPlot(headers, data) {
+            const subjects = headers.slice(1);
+            const traces = subjects.map(subject => {
+                const subjectIndex = headers.indexOf(subject);
+                const scores = data.map(row => parseFloat(row[subjectIndex]));
+                
+                return {
+                    y: scores,
+                    type: 'box',
+                    name: subject
+                };
+            });
+
+            const layout = {
+                title: '各科成績分布箱形圖',
+                yaxis: {
+                    title: '分數'
+                }
+            };
+
+            Plotly.newPlot('boxPlot', traces, layout);
+        }
+
+        function drawHeatmap(headers, data) {
+            const subjects = headers.slice(1);
+            const scores = data.map(row => row.slice(1).map(Number));
+            const students = data.map(row => row[0]);
+
+            const layout = {
+                title: '成績熱力圖',
+                xaxis: {
+                    title: '科目'
+                },
+                yaxis: {
+                    title: '學生'
+                }
+            };
+
+            const trace = {
+                z: scores,
+                x: subjects,
+                y: students,
+                type: 'heatmap',
+                colorscale: 'RdBu'
+            };
+
+            Plotly.newPlot('heatmap', [trace], layout);
+        }
+    </script>
+</body>
+</html>

@@ -41,6 +41,12 @@
             color: white;
             font-size: 24px;
         }
+        #drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -54,6 +60,7 @@
             <h2 id="score"></h2>
             <p>3秒後重新開始...</p>
         </div>
+        <canvas id="drawing-canvas"></canvas>
     </div>
 
     <script>
@@ -68,6 +75,9 @@
         const startMenu = document.getElementById('start-menu');
         const endMenu = document.getElementById('end-menu');
         const timerElement = document.getElementById('timer');
+        let drawCanvas, drawCtx;
+        let isDrawing = false;
+        let points = [];
 
         // 初始化Matter.js
         function initGame() {
@@ -102,6 +112,21 @@
             Matter.World.add(engine.world, [...walls, blueBall, redBall]);
             Matter.Engine.run(engine);
             Matter.Render.run(render);
+
+            // 初始化畫布
+            drawCanvas = document.getElementById('drawing-canvas');
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+            drawCtx = drawCanvas.getContext('2d');
+            drawCtx.strokeStyle = 'white';
+            drawCtx.lineWidth = 10;
+            drawCtx.lineCap = 'round';
+            
+            // 添加滑鼠事件
+            drawCanvas.style.pointerEvents = 'auto';
+            drawCanvas.addEventListener('mousedown', startDrawing);
+            drawCanvas.addEventListener('mousemove', draw);
+            drawCanvas.addEventListener('mouseup', endDrawing);
         }
 
         function startGame() {
@@ -187,6 +212,89 @@
                 currentState = GameState.START;
                 timerElement.textContent = '';
             }, 3000);
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            points = [];
+            const point = { x: e.clientX, y: e.clientY };
+            points.push(point);
+            
+            drawCtx.beginPath();
+            drawCtx.moveTo(point.x, point.y);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            
+            const point = { x: e.clientX, y: e.clientY };
+            points.push(point);
+            
+            drawCtx.lineTo(point.x, point.y);
+            drawCtx.stroke();
+        }
+
+        function endDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            // 過濾點
+            const filteredPoints = filterPoints(points);
+            // 創建矩形
+            createLineBody(filteredPoints);
+            
+            // 清除畫布
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        }
+
+        function filterPoints(points) {
+            if (points.length < 2) return points;
+            
+            const filtered = [points[0]];
+            for (let i = 1; i < points.length; i++) {
+                const dx = points[i].x - filtered[filtered.length-1].x;
+                const dy = points[i].y - filtered[filtered.length-1].y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                
+                if (distance >= 2) {
+                    filtered.push(points[i]);
+                }
+            }
+            return filtered;
+        }
+
+        function createLineBody(points) {
+            if (points.length < 2) return;
+            
+            const bodies = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                const angle = Math.atan2(dy, dx);
+                
+                const rect = Matter.Bodies.rectangle(
+                    (p1.x + p2.x) / 2,
+                    (p1.y + p2.y) / 2,
+                    distance,
+                    10,
+                    {
+                        angle: angle,
+                        render: { fillStyle: 'white' }
+                    }
+                );
+                
+                bodies.push(rect);
+            }
+            
+            const compound = Matter.Body.create({
+                parts: bodies
+            });
+            
+            Matter.World.add(engine.world, compound);
         }
 
         document.getElementById('start-btn').addEventListener('click', startGame);
