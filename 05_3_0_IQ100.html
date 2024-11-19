@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>IQ100 智力问答</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #343541;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 80%;
+            max-width: 800px;
+            text-align: center;
+        }
+
+        .state {
+            display: none;
+        }
+
+        /* API Key 输入状态 */
+        #apiKeyInput {
+            width: 300px;
+            padding: 10px;
+            margin: 10px;
+            border-radius: 5px;
+            border: none;
+        }
+
+        /* 按钮样式 */
+        .button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            background-color: #565869;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: transform 0.2s;
+        }
+
+        .button:hover {
+            background-color: #444654;
+            transform: scale(1.05);
+        }
+
+        /* 题目样式 */
+        .question {
+            font-size: 24px;
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #444654;
+            border-radius: 10px;
+        }
+
+        .options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .option {
+            padding: 15px;
+            background-color: #565869;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .option:hover {
+            transform: scale(1.02);
+        }
+
+        .option.correct {
+            background-color: #4CAF50;
+        }
+
+        .option.wrong {
+            background-color: #f44336;
+        }
+
+        /* 分数显示 */
+        .score {
+            font-size: 20px;
+            margin: 10px 0;
+        }
+
+        /* 星星动画 */
+        .star {
+            position: absolute;
+            pointer-events: none;
+            animation: star-explosion 1s ease-out forwards;
+            transform-origin: center;
+        }
+
+        @keyframes star-explosion {
+            0% {
+                transform: translate(-50%, -50%) scale(0.1) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--tx), var(--ty)) scale(1.5) rotate(var(--rotation));
+                opacity: 0;
+            }
+        }
+
+        /* 震动动画 */
+        .shake {
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 3px solid #ffffff3d;
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            color: #ff4444;
+            background-color: rgba(255, 68, 68, 0.1);
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        /* 禁用状态的选项样式 */
+        .option.disabled {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- API Key 输入状态 -->
+        <div id="apiKeyState" class="state">
+            <h1>🎮 IQ100 智力问答 🎮</h1>
+            <p>请输入您的 xAI API Key 开始游戏</p>
+            <input type="password" id="apiKeyInput" placeholder="输入 API Key...">
+            <button class="button" onclick="submitApiKey()">确认 ✨</button>
+        </div>
+
+        <!-- 开始游戏状态 -->
+        <div id="startState" class="state">
+            <h1>🎮 准备开始 🎮</h1>
+            <p>准备好接受挑战了吗？</p>
+            <button class="button" onclick="startGame()">开始游戏 🚀</button>
+        </div>
+
+        <!-- 加载状态 -->
+        <div id="loadingState" class="state">
+            <h2>🤔 AI 正在思考中...</h2>
+            <div class="loading"></div>
+        </div>
+
+        <!-- 答题状态 -->
+        <div id="questionState" class="state">
+            <div class="score">得分: <span id="scoreDisplay">0</span></div>
+            <div class="question" id="questionText"></div>
+            <div class="options" id="optionsContainer"></div>
+        </div>
+
+        <!-- 游戏结束状态 -->
+        <div id="endState" class="state">
+            <h1>🎮 游戏结束 🎮</h1>
+            <h2>最终得分: <span id="finalScore">0</span></h2>
+            <button class="button" onclick="resetGame()">重新开始 🔄</button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏状态和变量
+        let currentState = 'apiKey';
+        let apiKey = '';
+        let score = 0;
+        let questionCount = 0;
+        let currentQuestion = null;
+        let previousQuestions = [];
+        let isGenerating = false; // 添加状态标记
+        const TIMEOUT_DURATION = 30000; // 30秒超时
+
+        // 初始化
+        window.onload = () => {
+            showState('apiKey');
+        };
+
+        // 显示状态
+        function showState(state) {
+            document.querySelectorAll('.state').forEach(el => el.style.display = 'none');
+            document.getElementById(state + 'State').style.display = 'block';
+            currentState = state;
+        }
+
+        // 提交 API Key
+        function submitApiKey() {
+            const key = document.getElementById('apiKeyInput').value.trim();
+            if (!key) {
+                alert('请输入有效的 API Key');
+                return;
+            }
+            
+            // 简单验证 API Key 格式
+            if (!/^[a-zA-Z0-9-_]{30,}$/.test(key)) {
+                alert('API Key 格式似乎不正确，请检查');
+                return;
+            }
+            
+            apiKey = key;
+            showState('start');
+        }
+
+        // 开始游戏
+        function startGame() {
+            score = 0;
+            questionCount = 0;
+            previousQuestions = [];
+            document.getElementById('scoreDisplay').textContent = score;
+            generateQuestion();
+        }
+
+        // 生成问题
+        async function generateQuestion() {
+            if (isGenerating) return;
+            isGenerating = true;
+            
+            // 重置加载状态的显示
+            document.getElementById('loadingState').innerHTML = `
+                <h2>🤔 AI 正在思考中...</h2>
+                <div class="loading"></div>
+            `;
+            
+            showState('loading');
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_DURATION);
+
+            try {
+                const prompt = `请生成一个小学生的百科知识问答题目，格式如下：
+                {
+                    "question": "问题内容",
+                    "options": {
+                        "A": "选项A",
+                        "B": "选项B",
+                        "C": "选项C",
+                        "D": "选项D"
+                    },
+                    "answer": "正确答案字母"
+                }
+                请只返回纯JSON格式，不要加入其他文字。
+                这是之前出过的题目请不要重复：${JSON.stringify(previousQuestions)}`;
+
+                const response = await fetch('https://api.x.ai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "grok-beta",
+                        messages: [{
+                            role: "user",
+                            content: prompt
+                        }]
+                    }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error(`API 请求失败: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('API Response:', data);
+
+                const content = data.choices[0].message.content;
+                let parsedQuestion;
+
+                try {
+                    // 尝试直接解析
+                    parsedQuestion = JSON.parse(content);
+                } catch {
+                    // 如果直接解析失败，尝试提取 JSON
+                    const jsonMatch = content.match(/\{[\s\S]*\}/);
+                    if (!jsonMatch) {
+                        throw new Error('无法解析返回的内容为 JSON 格式');
+                    }
+                    parsedQuestion = JSON.parse(jsonMatch[0]);
+                }
+
+                // 验证问题格式
+                if (!validateQuestion(parsedQuestion)) {
+                    throw new Error('题目格式不正确');
+                }
+
+                currentQuestion = parsedQuestion;
+                previousQuestions.push(currentQuestion);
+                showQuestion();
+
+            } catch (error) {
+                console.error('Error:', error);
+                const errorMessage = error.name === 'AbortError' 
+                    ? '生成题目超时，请重试' 
+                    : `生成题目失败: ${error.message}`;
+
+                document.getElementById('loadingState').innerHTML = `
+                    <h2>😢 出错了</h2>
+                    <div class="error-message">${errorMessage}</div>
+                    <button class="button" onclick="generateQuestion()">重新生成 🔄</button>
+                `;
+            } finally {
+                isGenerating = false;
+            }
+        }
+
+        // 添加问题验证函数
+        function validateQuestion(question) {
+            return question 
+                && typeof question.question === 'string'
+                && question.options
+                && typeof question.options === 'object'
+                && 'A' in question.options
+                && 'B' in question.options
+                && 'C' in question.options
+                && 'D' in question.options
+                && typeof question.answer === 'string'
+                && ['A', 'B', 'C', 'D'].includes(question.answer);
+        }
+
+        // 显示问题
+        function showQuestion() {
+            showState('question');
+            document.getElementById('questionText').textContent = currentQuestion.question;
+            
+            const optionsContainer = document.getElementById('optionsContainer');
+            optionsContainer.innerHTML = '';
+            
+            Object.entries(currentQuestion.options).forEach(([key, value]) => {
+                const button = document.createElement('div');
+                button.className = 'option';
+                button.textContent = `${key}. ${value}`;
+                button.onclick = () => checkAnswer(key);
+                optionsContainer.appendChild(button);
+            });
+        }
+
+        // 检查答案
+        function checkAnswer(selected) {
+            const options = document.querySelectorAll('.option');
+            options.forEach(option => option.classList.add('disabled'));
+
+            if (selected === currentQuestion.answer) {
+                score += 10;
+                document.getElementById('scoreDisplay').textContent = score;
+                createStars();
+                options[selected.charCodeAt(0) - 65].classList.add('correct');
+            } else {
+                document.body.classList.add('shake');
+                setTimeout(() => document.body.classList.remove('shake'), 500);
+                options[selected.charCodeAt(0) - 65].classList.add('wrong');
+                options[currentQuestion.answer.charCodeAt(0) - 65].classList.add('correct');
+            }
+
+            questionCount++;
+            setTimeout(() => {
+                if (questionCount >= 10) {
+                    endGame();
+                } else {
+                    generateQuestion();
+                }
+            }, 1500);
+        }
+
+        // 修改创建星星动画函数
+        function createStars() {
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            
+            for (let i = 0; i < 30; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.textContent = '⭐';
+                
+                // 随机角度和距离
+                const angle = (Math.random() * 360) * (Math.PI / 180);
+                const distance = Math.random() * 200 + 100; // 100-300px
+                
+                // 计算目标位置
+                const tx = Math.cos(angle) * distance;
+                const ty = Math.sin(angle) * distance;
+                
+                // 设置初始位置在中心
+                star.style.left = `${centerX}px`;
+                star.style.top = `${centerY}px`;
+                
+                // 设置动画变量
+                star.style.setProperty('--tx', `${tx}px`);
+                star.style.setProperty('--ty', `${ty}px`);
+                star.style.setProperty('--rotation', `${Math.random() * 720 - 360}deg`);
+                
+                // 随机大小
+                star.style.fontSize = `${Math.random() * 20 + 15}px`;
+                
+                document.body.appendChild(star);
+                setTimeout(() => star.remove(), 1000);
+            }
+        }
+
+        // 结束游戏
+        function endGame() {
+            document.getElementById('finalScore').textContent = score;
+            showState('end');
+        }
+
+        // 重置游戏
+        function resetGame() {
+            showState('start');
+        }
+    </script>
+</body>
+</html>
