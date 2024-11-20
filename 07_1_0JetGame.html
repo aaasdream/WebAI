@@ -417,14 +417,10 @@
             enemy.style.left = x + 'px';
             enemy.style.top = y + 'px';
             
-            // 隨機選擇敵機圖片
-            const enemyImages = [
-                './image/a1.png',
-                './image/a2.png',
-                './image/a3.png'
-            ];
-            const randomImage = enemyImages[Math.floor(Math.random() * enemyImages.length)];
-            enemy.style.backgroundImage = `url('${randomImage}')`;
+            // 使用外星人 emoji
+            const alienEmojis = ['👾', '👽', '👻', '🤖'];
+            const randomAlien = alienEmojis[Math.floor(Math.random() * alienEmojis.length)];
+            enemy.innerHTML = randomAlien;
             
             document.getElementById('gameCanvas').appendChild(enemy);
 

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MediaPipe 人脸检测</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+        }
+        #webcam {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        #output_canvas {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+        <div id="status">状态: 初始化中...</div>
+    </div>
+
+<script type="module">
+import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+let faceLandmarker;
+let webcam;
+let canvas;
+let context;
+let statusElement;
+let drawingUtils;
+
+async function initialize() {
+    try {
+        // 获取元素
+        webcam = document.getElementById('webcam');
+        canvas = document.getElementById('output_canvas');
+        context = canvas.getContext('2d');
+        statusElement = document.getElementById('status');
+        
+        // 设置画布尺寸
+        canvas.width = 1280;
+        canvas.height = 720;
+        
+        updateStatus('加载MediaPipe模型...');
+        
+        // 初始化 FaceLandmarker
+        const filesetResolver = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
+        
+        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: {
+                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+                delegate: "GPU"
+            },
+            outputFaceBlendshapes: true,
+            runningMode: "VIDEO",
+            numFaces: 1,
+            minFaceDetectionConfidence: 0.5,
+            minFacePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        drawingUtils = new DrawingUtils(context);
+        
+        updateStatus('启动摄像头...');
+        await setupCamera();
+        updateStatus('系统就绪');
+        
+        // 开始检测
+        predictWebcam();
+        
+    } catch (error) {
+        updateStatus('错误: ' + error.message);
+        console.error(error);
+    }
+}
+
+async function setupCamera() {
+    const constraints = {
+        video: {
+            width: 1280,
+            height: 720,
+            frameRate: { ideal: 30 },
+            facingMode: 'user',
+        }
+    };
+    
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        webcam.srcObject = stream;
+        
+        // 设置视频属性
+        webcam.width = 1280;
+        webcam.height = 720;
+        
+        return new Promise((resolve) => {
+            webcam.onloadeddata = () => {
+                // 确保视频和画布尺寸匹配
+                canvas.width = webcam.videoWidth;
+                canvas.height = webcam.videoHeight;
+                resolve();
+            };
+        });
+    } catch (error) {
+        updateStatus('摄像头启动失败: ' + error.message);
+        throw error;
+    }
+}
+
+let lastVideoTime = -1;
+async function predictWebcam() {
+    if (!faceLandmarker) return;
+    
+    // 检测人脸
+    if (webcam.currentTime !== lastVideoTime) {
+        lastVideoTime = webcam.currentTime;
+        const startTimeMs = performance.now();
+        
+        try {
+            // 清除画布 - 移到这里确保只在有新帧时清除
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const results = faceLandmarker.detectForVideo(webcam, startTimeMs);
+            
+            // 只在检测到人脸时绘制
+            if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                for (const landmarks of results.faceLandmarks) {
+                    // 增加线条宽度和不透明度，使显示更稳定
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+                        { color: "#C0C0C0A0", lineWidth: 1.5 }
+                    );
+                    
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE,
+                        { color: "#FF3030", lineWidth: 2 }
+                    );
+                    
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_LEFT_EYE,
+                        { color: "#30FF30", lineWidth: 2 }
+                    );
+                    
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
+                        { color: "#E0E0E0", lineWidth: 2 }
+                    );
+                }
+            }
+        } catch (error) {
+            console.error("预测过程中发生错误:", error);
+            updateStatus('预测错误: ' + error.message);
+        }
+    }
+    
+    // 使用 setTimeout 来控制帧率
+    setTimeout(() => {
+        requestAnimationFrame(predictWebcam);
+    }, 1000 / 30); // 限制为30fps
+}
+
+function updateStatus(message) {
+    statusElement.textContent = '状态: ' + message;
+    console.log(message);
+}
+
+// 页面加载完成后初始化
+window.onload = initialize;
+</script>
+</body>
+</html>

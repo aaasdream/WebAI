@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MediaPipe 手部偵測</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+        }
+        #webcam {
+            transform: rotateY(180deg);
+            width: 1280px;
+            height: 720px;
+        }
+        #output_canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform: rotateY(180deg);
+        }
+        #status {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #matter-canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 1;
+        }
+        #output_canvas {
+            z-index: 2;
+        }
+    </style>
+    <!-- MediaPipe 必要的函式庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <!-- 添加 Matter.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div id="status">系統狀態: 初始化中...</div>
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+        <canvas id="matter-canvas"></canvas>
+    </div>
+
+    <script type="module">
+        import {
+            HandLandmarker,
+            FilesetResolver
+        } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+        const video = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusDiv = document.getElementById('status');
+        
+        let handLandmarker = undefined;
+        let webcamRunning = false;
+        let lastVideoTime = -1;
+
+        // 添加 Matter.js 相關變量
+        const { Engine, Render, World, Bodies, Composite, Common } = Matter;
+        const engine = Engine.create();
+        const matterCanvas = document.getElementById('matter-canvas');
+        const render = Render.create({
+            canvas: matterCanvas,
+            engine: engine,
+            options: {
+                width: 1280,
+                height: 720,
+                wireframes: false,
+                background: 'transparent'
+            }
+        });
+
+        // 添加邊界
+        const walls = [
+            Bodies.rectangle(640, -10, 1280, 20, { isStatic: true }), // 上
+            Bodies.rectangle(640, 730, 1280, 20, { isStatic: true }), // 下
+            Bodies.rectangle(-10, 360, 20, 720, { isStatic: true }), // 左
+            Bodies.rectangle(1290, 360, 20, 720, { isStatic: true }) // 右
+        ];
+        World.add(engine.world, walls);
+
+        // 生成隨機彩球
+        function createRandomBalls() {
+            for (let i = 0; i < 300; i++) {
+                const radius = Common.random(5, 15);
+                const ball = Bodies.circle(
+                    Common.random(0, 1280),
+                    Common.random(0, 720),
+                    radius,
+                    {
+                        restitution: 0.8,
+                        render: {
+                            fillStyle: `rgb(${Common.random(0, 255)}, ${Common.random(0, 255)}, ${Common.random(0, 255)})`
+                        }
+                    }
+                );
+                World.add(engine.world, ball);
+            }
+        }
+
+        let lastHandBodies = [];
+        let lastLandmarks = null;
+
+        // 更新狀態顯示
+        function updateStatus(message) {
+            statusDiv.textContent = `系統狀態: ${message}`;
+        }
+
+        // 顯示錯誤訊息
+        function showError(error) {
+            statusDiv.innerHTML = `錯誤: ${error}`;
+            statusDiv.style.backgroundColor = 'rgba(255,0,0,0.7)';
+        }
+
+        // 初始化 HandLandmarker
+        async function initializeHandLandmarker() {
+            try {
+                updateStatus("載入模型中...");
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+                );
+                
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                        delegate: "GPU"
+                    },
+                    runningMode: "VIDEO",
+                    numHands: 2
+                });
+                
+                updateStatus("模型載入完成，啟動攝影機...");
+                startCamera();
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        // 啟動攝影機
+        async function startCamera() {
+            try {
+                const constraints = {
+                    video: {
+                        width: 1280,
+                        height: 720
+                    }
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                video.addEventListener('loadeddata', predictWebcam);
+                webcamRunning = true;
+                updateStatus("系統運作中");
+            } catch (error) {
+                showError("無法存取攝影機: " + error.message);
+            }
+        }
+
+        // 預測與繪製
+        async function predictWebcam() {
+            canvasElement.style.width = video.videoWidth;
+            canvasElement.style.height = video.videoHeight;
+            canvasElement.width = video.videoWidth;
+            canvasElement.height = video.videoHeight;
+
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                const startTimeMs = performance.now();
+                const results = handLandmarker.detectForVideo(video, startTimeMs);
+
+                // 清除上一幀的手部物體
+                for (const body of lastHandBodies) {
+                    World.remove(engine.world, body);
+                }
+                lastHandBodies = [];
+
+                const landmarks = results.landmarks.length > 0 ? results.landmarks : lastLandmarks;
+                if (landmarks) {
+                    lastLandmarks = landmarks;
+                    
+                    for (const handLandmarks of landmarks) {
+                        // 創建手部節點之間的連接器
+                        for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
+                            const [start, end] = HAND_CONNECTIONS[i];
+                            const startPoint = handLandmarks[start];
+                            const endPoint = handLandmarks[end];
+                            
+                            const angle = Math.atan2(
+                                endPoint.y - startPoint.y,
+                                endPoint.x - startPoint.x
+                            );
+                            
+                            const length = Math.sqrt(
+                                Math.pow(endPoint.x - startPoint.x, 2) +
+                                Math.pow(endPoint.y - startPoint.y, 2)
+                            ) * canvasElement.width;
+                            
+                            const centerX = (startPoint.x + endPoint.x) / 2 * canvasElement.width;
+                            const centerY = (startPoint.y + endPoint.y) / 2 * canvasElement.height;
+                            
+                            const connector = Bodies.rectangle(
+                                centerX,
+                                centerY,
+                                length,
+                                20,
+                                {
+                                    isStatic: true,
+                                    angle: angle,
+                                    render: {
+                                        fillStyle: 'rgba(0, 255, 0, 0.5)'
+                                    }
+                                }
+                            );
+                            
+                            lastHandBodies.push(connector);
+                            World.add(engine.world, connector);
+                        }
+                    }
+                }
+
+                canvasCtx.save();
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                
+                if (results.landmarks) {
+                    for (const landmarks of results.landmarks) {
+                        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                            color: "#00FF00",
+                            lineWidth: 5
+                        });
+                        drawLandmarks(canvasCtx, landmarks, { 
+                            color: "#FF0000", 
+                            lineWidth: 2 
+                        });
+                    }
+                }
+                canvasCtx.restore();
+            }
+
+            if (webcamRunning) {
+                window.requestAnimationFrame(predictWebcam);
+            }
+        }
+
+        // 當頁面載入完成後開始初始化
+        window.onload = initializeHandLandmarker;
+
+        // 初始化時啟動物理引擎
+        Engine.run(engine);
+        Render.run(render);
+        createRandomBalls();
+    </script>
+</body>
+</html>

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MediaPipe 表情特效</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+        }
+        #webcam {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        #output_canvas {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        /* 添加星星的样式 */
+        .star {
+            position: absolute;
+            font-size: 24px;
+            pointer-events: none;
+            z-index: 10;
+            transition: transform 0.016s linear; /* 为了更流畅的动画 */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+        <div id="status">状态: 初始化中...</div>
+    </div>
+
+<script type="module">
+import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+let faceLandmarker;
+let webcam;
+let canvas;
+let context;
+let statusElement;
+let drawingUtils;
+
+// 添加星星相关变量
+let stars = [];
+let lastStarTime = 0;
+const STAR_INTERVAL = 50; // 每50ms产生一颗星星
+const STAR_EMOJIS = ['⭐', '✨', '💫', '🌟'];
+const GRAVITY = 0.5; // 重力加速度
+const INITIAL_VELOCITY = 15; // 初始速度
+const EXPLOSION_SPEED = 8; // 爆炸速度
+
+async function initialize() {
+    try {
+        // 获取元素
+        webcam = document.getElementById('webcam');
+        canvas = document.getElementById('output_canvas');
+        context = canvas.getContext('2d');
+        statusElement = document.getElementById('status');
+        
+        // 设置画布尺寸
+        canvas.width = 1280;
+        canvas.height = 720;
+        
+        updateStatus('加载MediaPipe模型...');
+        
+        // 初始化 FaceLandmarker
+        const filesetResolver = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
+        
+        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: {
+                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+                delegate: "GPU"
+            },
+            outputFaceBlendshapes: true,
+            runningMode: "VIDEO",
+            numFaces: 1,
+            minFaceDetectionConfidence: 0.5,
+            minFacePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        drawingUtils = new DrawingUtils(context);
+        
+        updateStatus('启动摄像头...');
+        await setupCamera();
+        updateStatus('系统就绪');
+        
+        // 开始检测
+        predictWebcam();
+        
+    } catch (error) {
+        updateStatus('错误: ' + error.message);
+        console.error(error);
+    }
+}
+
+async function setupCamera() {
+    const constraints = {
+        video: {
+            width: 1280,
+            height: 720,
+            frameRate: { ideal: 30 },
+            facingMode: 'user',
+        }
+    };
+    
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        webcam.srcObject = stream;
+        
+        // 设置视频属性
+        webcam.width = 1280;
+        webcam.height = 720;
+        
+        return new Promise((resolve) => {
+            webcam.onloadeddata = () => {
+                // 确保视频和画布尺寸匹配
+                canvas.width = webcam.videoWidth;
+                canvas.height = webcam.videoHeight;
+                resolve();
+            };
+        });
+    } catch (error) {
+        updateStatus('摄像头启动失败: ' + error.message);
+        throw error;
+    }
+}
+
+let lastVideoTime = -1;
+async function predictWebcam() {
+    if (!faceLandmarker) return;
+    
+    if (webcam.currentTime !== lastVideoTime) {
+        lastVideoTime = webcam.currentTime;
+        const startTimeMs = performance.now();
+        
+        try {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            const results = faceLandmarker.detectForVideo(webcam, startTimeMs);
+            
+            if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                const landmarks = results.faceLandmarks[0];
+                
+                // 绘制眼睛emoji
+                const leftEye = getEyeCenter(landmarks, 'left');
+                const rightEye = getEyeCenter(landmarks, 'right');
+                
+                if (leftEye && rightEye) {
+                    drawEmoji('🍳', leftEye.x, leftEye.y, 150);
+                    drawEmoji('🍳', rightEye.x, rightEye.y, 150);
+                }
+                
+                // 检测嘴巴开合
+                const mouthOpen = isMouthOpen(landmarks);
+                if (mouthOpen) {
+                    const mouthCenter = getMouthCenter(landmarks);
+                    if (mouthCenter) {
+                        const now = performance.now();
+                        if (now - lastStarTime > STAR_INTERVAL) {
+                            stars.push(createStar(mouthCenter.x, mouthCenter.y));
+                            lastStarTime = now;
+                        }
+                    }
+                }
+            }
+            
+            // 更新星星动画
+            updateStars();
+            
+        } catch (error) {
+            console.error("预测过程中发生错误:", error);
+            updateStatus('预测错误: ' + error.message);
+        }
+    }
+    
+    requestAnimationFrame(predictWebcam);
+}
+
+// 辅助函数：绘制emoji
+function drawEmoji(emoji, x, y, size) {
+    context.font = `${size}px Arial`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(emoji, x, y);
+}
+
+// 辅助函数：获取眼睛中心点
+function getEyeCenter(landmarks, side) {
+    try {
+        const eyeIndices = {
+            'left': [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+            'right': [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+        };
+        
+        const indices = eyeIndices[side];
+        if (!indices) {
+            console.error('无效的眼睛位置:', side);
+            return null;
+        }
+
+        let x = 0, y = 0, count = 0;
+        for (const index of indices) {
+            if (landmarks[index] && typeof landmarks[index].x === 'number') {
+                x += landmarks[index].x * canvas.width;
+                y += landmarks[index].y * canvas.height;
+                count++;
+            }
+        }
+        
+        if (count === 0) return null;
+        return { x: x / count, y: y / count };
+    } catch (error) {
+        console.error('计算眼睛中心点时出错:', error);
+        return null;
+    }
+}
+
+// 辅助函数：获取嘴巴中心点
+function getMouthCenter(landmarks) {
+    try {
+        const upperLipIndices = [13, 312, 311, 310, 415, 308];
+        const lowerLipIndices = [14, 317, 402, 318, 324, 308];
+        
+        let upperX = 0, upperY = 0, lowerX = 0, lowerY = 0;
+        let upperCount = 0, lowerCount = 0;
+
+        for (const index of upperLipIndices) {
+            if (landmarks[index] && typeof landmarks[index].x === 'number') {
+                upperX += (1 - landmarks[index].x);
+                upperY += landmarks[index].y;
+                upperCount++;
+            }
+        }
+        
+        for (const index of lowerLipIndices) {
+            if (landmarks[index] && typeof landmarks[index].x === 'number') {
+                lowerX += (1 - landmarks[index].x);
+                lowerY += landmarks[index].y;
+                lowerCount++;
+            }
+        }
+        
+        if (upperCount === 0 || lowerCount === 0) return null;
+
+        return {
+            x: ((upperX / upperCount) + (lowerX / lowerCount)) * canvas.width / 2,
+            y: ((upperY / upperCount) + (lowerY / lowerCount)) * canvas.height / 2
+        };
+    } catch (error) {
+        console.error('计算嘴巴中心点时出错:', error);
+        return null;
+    }
+}
+
+// 辅助函数：检测嘴巴是否张开
+function isMouthOpen(landmarks) {
+    try {
+        // 使用上下嘴唇的多个点来计算开合程度
+        const upperLipY = landmarks[13].y;
+        const lowerLipY = landmarks[14].y;
+        
+        if (typeof upperLipY !== 'number' || typeof lowerLipY !== 'number') {
+            return false;
+        }
+
+        const distance = Math.abs(upperLipY - lowerLipY);
+        return distance > 0.05; // 阈值可以调整
+    } catch (error) {
+        console.error('检测嘴巴开合时出错:', error);
+        return false;
+    }
+}
+
+// 添加星星的函数
+function createStar(x, y) {
+    const star = document.createElement('div');
+    star.className = 'star';
+    star.textContent = STAR_EMOJIS[Math.floor(Math.random() * STAR_EMOJIS.length)];
+    star.style.left = x + 'px';
+    star.style.top = y + 'px';
+    document.querySelector('.container').appendChild(star);
+
+    // 随机爆炸角度
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * EXPLOSION_SPEED;
+    
+    return {
+        element: star,
+        x: x,
+        y: y,
+        vx: Math.cos(angle) * speed,
+        vy: -INITIAL_VELOCITY + Math.sin(angle) * speed, // 向上的初始速度
+        opacity: 1
+    };
+}
+
+// 更新星星位置和透明度
+function updateStars() {
+    stars = stars.filter(star => {
+        // 更新位置
+        star.x += star.vx;
+        star.vy += GRAVITY; // 添加重力效果
+        star.y += star.vy;
+        
+        // 更新透明度
+        star.opacity -= 0.01;
+        
+        if (star.opacity <= 0 || star.y > canvas.height) {
+            star.element.remove();
+            return false;
+        }
+
+        // 更新DOM元素位置和样式
+        star.element.style.transform = `translate(${star.x - parseFloat(star.element.style.left)}px, 
+                                                ${star.y - parseFloat(star.element.style.top)}px)`;
+        star.element.style.opacity = star.opacity;
+        
+        return true;
+    });
+}
+
+function updateStatus(message) {
+    statusElement.textContent = '状态: ' + message;
+    console.log(message);
+}
+
+// 页面加载完成后初始化
+window.onload = initialize;
+</script>
+</body>
+</html>
