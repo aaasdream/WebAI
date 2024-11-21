@@ -34,7 +34,7 @@
             border-radius: 5px;
             z-index: 100;
         }
-        #matter-canvas {
+        #physics_canvas {
             position: absolute;
             left: 0;
             top: 0;
@@ -55,7 +55,7 @@
         <div id="status">系統狀態: 初始化中...</div>
         <video id="webcam" autoplay playsinline></video>
         <canvas id="output_canvas"></canvas>
-        <canvas id="matter-canvas"></canvas>
+        <canvas id="physics_canvas"></canvas>
     </div>
 
     <script type="module">
@@ -74,11 +74,11 @@
         let lastVideoTime = -1;
 
         // 添加 Matter.js 相關變量
-        const { Engine, Render, World, Bodies, Composite, Common } = Matter;
+        const { Engine, Render, World, Bodies, Composite, Constraint, Common } = Matter;
         const engine = Engine.create();
-        const matterCanvas = document.getElementById('matter-canvas');
+        const physicsCanvas = document.getElementById('physics_canvas');
         const render = Render.create({
-            canvas: matterCanvas,
+            canvas: physicsCanvas,
             engine: engine,
             options: {
                 width: 1280,
@@ -88,7 +88,7 @@
             }
         });
 
-        // 添加邊界
+        // 創建邊界
         const walls = [
             Bodies.rectangle(640, -10, 1280, 20, { isStatic: true }), // 上
             Bodies.rectangle(640, 730, 1280, 20, { isStatic: true }), // 下
@@ -97,27 +97,30 @@
         ];
         World.add(engine.world, walls);
 
-        // 生成隨機彩球
-        function createRandomBalls() {
-            for (let i = 0; i < 300; i++) {
-                const radius = Common.random(5, 15);
-                const ball = Bodies.circle(
-                    Common.random(0, 1280),
-                    Common.random(0, 720),
-                    radius,
-                    {
-                        restitution: 0.8,
-                        render: {
-                            fillStyle: `rgb(${Common.random(0, 255)}, ${Common.random(0, 255)}, ${Common.random(0, 255)})`
-                        }
+        // 創建隨機彩球
+        const balls = [];
+        for (let i = 0; i < 200; i++) {
+            const size = Common.random(40, 60);
+            const ball = Bodies.circle(
+                Common.random(0, 1280),
+                Common.random(0, 720),
+                size/2,
+                {
+                    restitution: 0.6,
+                    friction: 0.1,
+                    density: 0.001,
+                    render: {
+                        fillStyle: `hsl(${Common.random(0, 360)}, 100%, 50%)`
                     }
-                );
-                World.add(engine.world, ball);
-            }
+                }
+            );
+            balls.push(ball);
         }
+        World.add(engine.world, balls);
 
-        let lastHandBodies = [];
-        let lastLandmarks = null;
+        // 手部節點和約束
+        let handConstraints = [];
+        let handBodies = [];
 
         // 更新狀態顯示
         function updateStatus(message) {
@@ -186,60 +189,16 @@
                 const startTimeMs = performance.now();
                 const results = handLandmarker.detectForVideo(video, startTimeMs);
 
-                // 清除上一幀的手部物體
-                for (const body of lastHandBodies) {
-                    World.remove(engine.world, body);
-                }
-                lastHandBodies = [];
-
-                const landmarks = results.landmarks.length > 0 ? results.landmarks : lastLandmarks;
-                if (landmarks) {
-                    lastLandmarks = landmarks;
-                    
-                    for (const handLandmarks of landmarks) {
-                        // 創建手部節點之間的連接器
-                        for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
-                            const [start, end] = HAND_CONNECTIONS[i];
-                            const startPoint = handLandmarks[start];
-                            const endPoint = handLandmarks[end];
-                            
-                            const angle = Math.atan2(
-                                endPoint.y - startPoint.y,
-                                endPoint.x - startPoint.x
-                            );
-                            
-                            const length = Math.sqrt(
-                                Math.pow(endPoint.x - startPoint.x, 2) +
-                                Math.pow(endPoint.y - startPoint.y, 2)
-                            ) * canvasElement.width;
-                            
-                            const centerX = (startPoint.x + endPoint.x) / 2 * canvasElement.width;
-                            const centerY = (startPoint.y + endPoint.y) / 2 * canvasElement.height;
-                            
-                            const connector = Bodies.rectangle(
-                                centerX,
-                                centerY,
-                                length,
-                                20,
-                                {
-                                    isStatic: true,
-                                    angle: angle,
-                                    render: {
-                                        fillStyle: 'rgba(0, 255, 0, 0.5)'
-                                    }
-                                }
-                            );
-                            
-                            lastHandBodies.push(connector);
-                            World.add(engine.world, connector);
-                        }
-                    }
-                }
-
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
                 
                 if (results.landmarks) {
+                    // 移除舊的約束和物體
+                    handConstraints.forEach(c => World.remove(engine.world, c));
+                    handBodies.forEach(b => World.remove(engine.world, b));
+                    handConstraints = [];
+                    handBodies = [];
+
                     for (const landmarks of results.landmarks) {
                         drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
                             color: "#00FF00",
@@ -249,7 +208,71 @@
                             color: "#FF0000", 
                             lineWidth: 2 
                         });
+
+                        // 修改座標計算，水平翻轉
+                        const bodies = landmarks.map(lm => 
+                            Bodies.circle(
+                                canvasElement.width - (lm.x * canvasElement.width), // 水平翻轉座標
+                                lm.y * canvasElement.height,
+                                10,
+                                {
+                                    isStatic: true,
+                                    render: { fillStyle: '#FF0000' },
+                                    collisionFilter: {
+                                        category: 0x0002,    // 設定碰撞類別
+                                    }
+                                }
+                            )
+                        );
+                        
+                        // 修改約束參數
+                        for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
+                            const [first, second] = HAND_CONNECTIONS[i];
+                            const constraint = Constraint.create({
+                                bodyA: bodies[first],
+                                bodyB: bodies[second],
+                                stiffness: 100,      // 增加剛性
+                                damping: 0,      // 增加阻尼
+                                render: {
+                                    type: 'line',
+                                    anchors: false,
+                                    lineWidth: 20
+                                }
+                            });
+                            handConstraints.push(constraint);
+                        }
+                        
+                        // 創建手部關節之間的額外物理物件
+                        for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
+                            const [first, second] = HAND_CONNECTIONS[i];
+                            const pointA = bodies[first].position;
+                            const pointB = bodies[second].position;
+                            
+                            // 在兩個關節之間創建矩形物理物件
+                            const dx = pointB.x - pointA.x;
+                            const dy = pointB.y - pointA.y;
+                            const angle = Math.atan2(dy, dx);
+                            const length = Math.sqrt(dx * dx + dy * dy);
+                            
+                            const rect = Bodies.rectangle(
+                                (pointA.x + pointB.x) / 2,
+                                (pointA.y + pointB.y) / 2,
+                                length,
+                                20,
+                                {
+                                    isStatic: true,
+                                    angle: angle,
+                                    render: { fillStyle: 'rgba(255,0,0,0.3)' },
+                                    collisionFilter: {
+                                        category: 0x0002,
+                                    }
+                                }
+                            );
+                            handBodies.push(rect);
+                        }
                     }
+
+                    World.add(engine.world, [...handBodies, ...handConstraints]);
                 }
                 canvasCtx.restore();
             }
@@ -262,10 +285,9 @@
         // 當頁面載入完成後開始初始化
         window.onload = initializeHandLandmarker;
 
-        // 初始化時啟動物理引擎
+        // 啟動物理引擎
         Engine.run(engine);
         Render.run(render);
-        createRandomBalls();
     </script>
 </body>
 </html>

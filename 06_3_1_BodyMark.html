@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MediaPipe Pose Detection</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+        }
+        #webcam {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        #output_canvas {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #gameInfo {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #startCircle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            font-size: 24px;
+            z-index: 90;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas" width="1280" height="720"></canvas>
+        <div id="status">系統狀態: 初始化中...</div>
+        <div id="gameInfo"></div>
+        <div id="startCircle"></div>
+    </div>
+
+    <script type="module">
+        import {
+            PoseLandmarker,
+            FilesetResolver,
+            DrawingUtils
+        } from "https://cdn.skypack.dev/@mediapipe/tasks-vision@0.10.0";
+
+        const video = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusElement = document.getElementById('status');
+        let poseLandmarker = null;
+        let lastVideoTime = -1;
+
+        let gameState = 'start'; // 'start', 'playing', 'end'
+        let score = 0;
+        let gameTimer = 5;
+        let gameInterval;
+        const gameInfoElement = document.getElementById('gameInfo');
+        const startCircleElement = document.getElementById('startCircle');
+
+        function drawHandCircles(landmark) {
+            // 繪製手部圓圈
+            const finger1 = {
+                x: (landmark[18].x + landmark[20].x) / 2,
+                y: (landmark[18].y + landmark[20].y) / 2
+            };
+            const finger2 = {
+                x: (landmark[17].x + landmark[19].x) / 2,
+                y: (landmark[17].y + landmark[19].y) / 2
+            };
+
+            canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+            canvasCtx.beginPath();
+            canvasCtx.arc(finger1.x * canvasElement.width, finger1.y * canvasElement.height, 30, 0, 2 * Math.PI);
+            canvasCtx.fill();
+            canvasCtx.beginPath();
+            canvasCtx.arc(finger2.x * canvasElement.width, finger2.y * canvasElement.height, 30, 0, 2 * Math.PI);
+            canvasCtx.fill();
+
+            return { finger1, finger2 };
+        }
+
+        function drawStartCircle() {
+            canvasCtx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+            canvasCtx.beginPath();
+            canvasCtx.arc(canvasElement.width/2, canvasElement.height/2, 100, 0, 2 * Math.PI);
+            canvasCtx.fill();
+            
+            canvasCtx.fillStyle = 'white';
+            canvasCtx.font = '24px Arial';
+            canvasCtx.textAlign = 'center';
+            canvasCtx.fillText('雙手靠近', canvasElement.width/2, canvasElement.height/2);
+        }
+
+        function checkHandsInStartCircle(finger1, finger2) {
+            const centerX = canvasElement.width/2;
+            const centerY = canvasElement.height/2;
+            const distance1 = Math.hypot(finger1.x * canvasElement.width - centerX, finger1.y * canvasElement.height - centerY);
+            const distance2 = Math.hypot(finger2.x * canvasElement.width - centerX, finger2.y * canvasElement.height - centerY);
+            return distance1 < 100 && distance2 < 100;
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            gameTimer = 5;
+            gameInterval = setInterval(() => {
+                gameTimer--;
+                if (gameTimer <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            gameState = 'end';
+            clearInterval(gameInterval);
+        }
+
+        // 更新狀態顯示
+        function updateStatus(message) {
+            statusElement.textContent = `系統狀態: ${message}`;
+        }
+
+        // 初始化 PoseLandmarker
+        async function initializePoseLandmarker() {
+            try {
+                updateStatus("載入模型中...");
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+                );
+
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
+                        delegate: "GPU"
+                    },
+                    runningMode: "VIDEO",
+                    numPoses: 2
+                });
+                
+                updateStatus("模型載入完成，啟動攝影機...");
+                startCamera();
+            } catch (error) {
+                updateStatus(`錯誤: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        // 啟動攝影機
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: 1280,
+                        height: 720
+                    }
+                });
+                video.srcObject = stream;
+                video.addEventListener('loadeddata', predictPose);
+                updateStatus("攝影機啟動完成，開始偵測...");
+            } catch (error) {
+                updateStatus(`攝影機錯誤: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        // 預測姿勢
+        async function predictPose() {
+            if (!poseLandmarker) {
+                updateStatus("模型未載入");
+                return;
+            }
+
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                const startTimeMs = performance.now();
+
+                try {
+                    const results = await poseLandmarker.detectForVideo(video, startTimeMs);
+                    canvasCtx.save();
+                    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+                    const drawingUtils = new DrawingUtils(canvasCtx);
+                    for (const landmark of results.landmarks) {
+                        drawingUtils.drawLandmarks(landmark, {
+                            radius: (data) => DrawingUtils.lerp(data.from?.z, -0.15, 0.1, 5, 1)
+                        });
+                        drawingUtils.drawConnectors(landmark, PoseLandmarker.POSE_CONNECTIONS);
+
+                        const { finger1, finger2 } = drawHandCircles(landmark);
+
+                        if (gameState === 'start' || gameState === 'end') {
+                            drawStartCircle();
+                            if (checkHandsInStartCircle(finger1, finger2)) {
+                                startGame();
+                            }
+                        }
+                    }
+
+                    // 更新遊戲資訊顯示
+                    if (gameState === 'playing') {
+                        gameInfoElement.textContent = `分數: ${score} | 時間: ${gameTimer}秒`;
+                    } else if (gameState === 'end') {
+                        gameInfoElement.textContent = `GAME OVER | 最終分數: ${score}`;
+                    }
+
+                    canvasCtx.restore();
+                } catch (error) {
+                    updateStatus(`偵測錯誤: ${error.message}`);
+                    console.error(error);
+                }
+            }
+
+            requestAnimationFrame(predictPose);
+        }
+
+        // 啟動應用程式
+        window.onload = initializePoseLandmarker;
+    </script>
+</body>
+</html>

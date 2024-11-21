@@ -2,26 +2,29 @@
 <html>
 <head>
     <style>
+        /* 基本頁面設置 */
         body {
             margin: 0;
-            overflow: hidden;
-            background-color: #0a0a2a;
-            cursor: none;
+            overflow: hidden;        /* 防止頁面出現捲軸 */
+            background-color: #0a0a2a; /* 深藍色背景模擬夜空 */
+            cursor: none;           /* 隱藏滑鼠指標 */
         }
 
+        /* 星星的樣式設定 */
         .star {
-            position: absolute;
+            position: absolute;     /* 絕對定位以便自由放置 */
             color: white;
-            opacity: 0;
-            transition: opacity 1s;
-            pointer-events: none;
+            opacity: 0;            /* 初始透明度為0 */
+            transition: opacity 1s; /* 透明度變化時的漸變效果 */
+            pointer-events: none;   /* 防止星星影響滑鼠事件 */
         }
 
+        /* 月亮的樣式設定 */
         #moon {
-            position: fixed;
-            font-size: 200px;
-            pointer-events: none;
-            transition: all 0.3s ease;
+            position: fixed;        /* 固定定位，跟隨視窗 */
+            font-size: 200px;       /* 月亮大小 */
+            pointer-events: none;   /* 防止月亮影響滑鼠事件 */
+            transition: all 0.3s ease; /* 移動時的平滑過渡效果 */
         }
     </style>
 </head>
@@ -33,40 +36,43 @@
         const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
         let currentPhase = 0;
 
-        // 滑鼠跟隨效果
+        // 滑鼠移動事件處理
         document.addEventListener('mousemove', (e) => {
+            // 設置月亮位置，減去100是為了讓月亮置中於滑鼠位置
             moon.style.left = e.clientX - 100 + 'px';
             moon.style.top = e.clientY - 100 + 'px';
         });
 
-        // 月相動畫
+        // 月相循環動畫設定
         setInterval(() => {
-            currentPhase = (currentPhase + 1) % moonPhases.length;
-            moon.textContent = moonPhases[currentPhase];
-        }, 200); // 每200毫秒改變一次（5張/秒）
+            currentPhase = (currentPhase + 1) % moonPhases.length;  // 循環切換月相
+            moon.textContent = moonPhases[currentPhase];            // 更新月相顯示
+        }, 200); // 每200毫秒改變一次月相
 
-        // 創建星星
+        // 創建單個星星的函數
         function createStar() {
             const star = document.createElement('div');
             star.className = 'star';
+            // 隨機設置星星在視窗中的位置
             star.style.left = Math.random() * window.innerWidth + 'px';
             star.style.top = Math.random() * window.innerHeight + 'px';
             star.textContent = '⭐';
+            // 隨機設置星星大小（5-15像素）
             star.style.fontSize = Math.random() * 10 + 5 + 'px';
             document.body.appendChild(star);
 
-            // 星星閃爍動畫
+            // 延遲100毫秒後開始顯示星星
             setTimeout(() => {
-                star.style.opacity = Math.random();
+                star.style.opacity = Math.random();  // 設置隨機透明度
             }, 100);
 
-            // 定期更新星星的亮度
+            // 設置星星閃爍效果
             setInterval(() => {
-                star.style.opacity = Math.random();
-            }, 1000 + Math.random() * 2000);
+                star.style.opacity = Math.random();  // 定期隨機改變透明度
+            }, 1000 + Math.random() * 2000);  // 閃爍間隔在1-3秒之間隨機
         }
 
-        // 初始化星空
+        // 初始化星空，創建100顆星星
         for (let i = 0; i < 100; i++) {
             createStar();
         }
