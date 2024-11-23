@@ -3,11 +3,11 @@
 
 Cursor 下載連結：https://www.cursor.sh/
 
-Gemini 連結：https://gemini.google.com/
+Gemini 聊天圖片生成連結：https://gemini.google.com/
 
-ImageCreator 連結：https://www.bing.com/images/create
+ImageCreator 圖片生成連結：https://www.bing.com/images/create
 
-
+音樂生成：https://suno.com/create
 
 
 

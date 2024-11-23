@@ -1,0 +1,2 @@
+canvas.toDataURL 將emoji轉成matter的圖型 
+畫面元件使用emoji取代

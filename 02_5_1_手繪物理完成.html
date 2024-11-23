@@ -130,6 +130,9 @@
         }
 
         function startGame() {
+            // 移除之前的事件監聽器
+            document.getElementById('start-btn').removeEventListener('click', startGame);
+            
             currentState = GameState.PLAYING;
             startMenu.style.display = 'none';
             endMenu.style.display = 'none';
@@ -211,6 +214,9 @@
                 startMenu.style.display = 'block';
                 currentState = GameState.START;
                 timerElement.textContent = '';
+                
+                // 重新添加開始按鈕的事件監聽器
+                document.getElementById('start-btn').addEventListener('click', startGame);
             }, 3000);
         }
 

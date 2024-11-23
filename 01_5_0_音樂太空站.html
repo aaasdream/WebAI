@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0a0a2a;
+            cursor: none;
+        }
+
+        .star {
+            position: absolute;
+            color: white;
+            opacity: 0;
+            transition: opacity 1s;
+            pointer-events: none;
+        }
+
+        #earth {
+            position: fixed;
+            font-size: 300px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        #moon {
+            position: fixed;
+            width: 100px;
+            height: 100px;
+            pointer-events: none;
+            transition: all 0.3s ease;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="earth">🌍</div>
+    <img id="moon" src="./image/station.png" alt="space station">
+    <audio id="bgMusic" loop>
+        <source src="./music/gamemusic.mp3" type="audio/mp3">
+    </audio>
+
+    <script>
+        const moon = document.getElementById('moon');
+        const earth = document.getElementById('earth');
+        const earthPhases = ['🌍', '🌎', '🌏'];
+        let currentPhase = 0;
+        let earthPhase = 0;
+        let lastX = 0;
+
+        // 滑鼠跟隨效果
+        document.addEventListener('mousemove', (e) => {
+            // 判斷月亮移動方向
+            const isMovingRight = e.clientX > lastX;
+            moon.style.zIndex = isMovingRight ? -1 : 2;
+            lastX = e.clientX;
+
+            moon.style.left = e.clientX - 100 + 'px';
+            moon.style.top = e.clientY - 100 + 'px';
+        });
+
+        // 地球動畫
+        setInterval(() => {
+            earthPhase = (earthPhase + 1) % earthPhases.length;
+            earth.textContent = earthPhases[earthPhase];
+        }, 300);
+
+        // 創建星星
+        function createStar() {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.left = Math.random() * window.innerWidth + 'px';
+            star.style.top = Math.random() * window.innerHeight + 'px';
+            star.textContent = '⭐';
+            star.style.fontSize = Math.random() * 10 + 5 + 'px';
+            document.body.appendChild(star);
+
+            // 星星閃爍動畫
+            setTimeout(() => {
+                star.style.opacity = Math.random();
+            }, 100);
+
+            // 定期更新星星的亮度
+            setInterval(() => {
+                star.style.opacity = Math.random();
+            }, 1000 + Math.random() * 2000);
+        }
+
+        // 初始化星空
+        for (let i = 0; i < 100; i++) {
+            createStar();
+        }
+
+        // 添加音樂播放功能
+        const bgMusic = document.getElementById('bgMusic');
+        
+        // 當用戶首次點擊頁面任意位置時播放音樂
+        document.addEventListener('click', () => {
+            if (bgMusic.paused) {
+                bgMusic.play().catch(error => {
+                    console.log("無法播放音樂:", error);
+                });
+            }
+        }, { once: true }); // once: true 確保事件只觸發一次
+    </script>
+</body>
+</html>
