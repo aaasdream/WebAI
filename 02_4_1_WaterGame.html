@@ -54,6 +54,19 @@
         let points = [];
         let ballSpawnInterval;
 
+        // 將 emoji 轉換為圖片 URL
+        function emojiToURL(emoji, size = 80) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, size/2, size/2);
+            return canvas.toDataURL();
+        }
+
         // 初始化物理引擎
         function init() {
             engine = Matter.Engine.create({
@@ -78,14 +91,16 @@
 
         // 創建方塊
         function createBoxes() {
+            const blueBoxTexture = emojiToURL('🏰');
+            const redBoxTexture = emojiToURL('👾');
+
             blueBox = Matter.Bodies.rectangle(100, 100, 80, 80, {
                 isStatic: true,
                 render: {
-                    fillStyle: '#0000ff',
-                    text: {
-                        content: blueHealth.toString(),
-                        color: 'white',
-                        size: 20
+                    sprite: {
+                        texture: blueBoxTexture,
+                        xScale: 1,
+                        yScale: 1
                     }
                 }
             });
@@ -93,11 +108,10 @@
             redBox = Matter.Bodies.rectangle(window.innerWidth - 100, window.innerHeight - 100, 80, 80, {
                 isStatic: true,
                 render: {
-                    fillStyle: '#ff0000',
-                    text: {
-                        content: redHealth.toString(),
-                        color: 'white',
-                        size: 20
+                    sprite: {
+                        texture: redBoxTexture,
+                        xScale: 1,
+                        yScale: 1
                     }
                 }
             });
@@ -109,13 +123,18 @@
         function spawnBall() {
             if (blueHealth <= 0) return;
             
+            const ballTexture = emojiToURL('💧', 20);
             const ball = Matter.Bodies.circle(
                 blueBox.position.x,
                 blueBox.position.y,
-                5,
+                10,
                 {
                     render: {
-                        fillStyle: '#0000ff'
+                        sprite: {
+                            texture: ballTexture,
+                            xScale: 1,
+                            yScale: 1
+                        }
                     }
                 }
             );
@@ -143,9 +162,10 @@
 
         // 紅色方塊閃爍
         function flashRedBox() {
-            redBox.render.fillStyle = '#ffffff';
+            const originalTexture = redBox.render.sprite.texture;
+            redBox.render.sprite.texture = emojiToURL('💥');
             setTimeout(() => {
-                redBox.render.fillStyle = '#ff0000';
+                redBox.render.sprite.texture = originalTexture;
             }, 100);
         }
 
@@ -177,7 +197,11 @@
                             isStatic: true,
                             angle: Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x),
                             render: {
-                                fillStyle: '#ffffff'
+                                sprite: {
+                                    texture: emojiToURL('🌟', 15),
+                                    xScale: 1,
+                                    yScale: 1
+                                }
                             }
                         }
                     );
@@ -190,7 +214,6 @@
                 isDrawing = false;
             });
 
-            // 添加滑鼠離開畫布時停止繪製
             canvas.addEventListener('mouseleave', () => {
                 isDrawing = false;
             });
