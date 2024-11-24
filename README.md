@@ -1,5 +1,5 @@
 # Web APP AI
-教學PPT：https://docs.google.com/presentation/d/1IqvnqGd6g_oQYLSqMZSLoKsAYicYfR5UtrtEWpG7MVs/edit?usp=sharing
+教學PPT：[https://docs.google.com/presentation/d/1IqvnqGd6g_oQYLSqMZSLoKsAYicYfR5UtrtEWpG7MVs/edit?usp=sharing](https://docs.google.com/presentation/d/1htpmQ7aI2jSMbMKu22BO3z1t-MtiEvQBTzbQ1BbsxkE/edit?usp=sharing)
 
 Cursor 下載連結：https://www.cursor.sh/
 
